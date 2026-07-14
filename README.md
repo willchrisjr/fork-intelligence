@@ -10,7 +10,7 @@ The production MVP is implemented and validated end to end. It accepts a public
 GitHub repository, progressively discovers its accessible fork network,
 analyzes a bounded shortlist with native Git, and exposes evidence-backed
 rankings, fork details, comparisons, development directions, evolution views,
-and JSON/CSV/Markdown exports.
+JSON/CSV/Markdown exports, and a persisted system-aware light/dark theme.
 
 ## Architecture
 
@@ -82,9 +82,10 @@ pnpm build
 pnpm smoke:real
 ```
 
-See [PLANS.md](PLANS.md), [docs/STATUS.md](docs/STATUS.md), and
+See [PLANS.md](PLANS.md), [docs/STATUS.md](docs/STATUS.md),
+[docs/ROADMAP.md](docs/ROADMAP.md), and
 [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the current implementation scope,
-validated behavior, methodology, and limitations.
+validated behavior, priorities, methodology, and limitations.
 
 The most recent real-repository smoke analyzed `octocat/Hello-World` with a
 three-fork census and two-fork structural shortlist. The full network was

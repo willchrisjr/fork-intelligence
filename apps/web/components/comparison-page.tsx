@@ -13,8 +13,9 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { ThemeToggle } from "./theme-toggle";
 
-const colors = ["#0b57e3", "#078a7b", "#6938d3"];
+const colors = ["var(--cobalt)", "var(--teal)", "var(--violet)"];
 
 export function ComparisonPage({ comparisonId }: { comparisonId: string }) {
   const query = useQuery({
@@ -60,6 +61,7 @@ export function ComparisonPage({ comparisonId }: { comparisonId: string }) {
         <header className="comparison-topbar">
           <strong className="mono">Comparison</strong>
           <div>
+            <ThemeToggle />
             <button
               className="button"
               onClick={() => navigator.clipboard?.writeText(location.href)}

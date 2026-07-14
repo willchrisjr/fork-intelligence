@@ -18,6 +18,7 @@ import { Brand } from "./brand";
 import type { AnalysisSummary } from "@/lib/types";
 import { api } from "@/lib/api";
 import { formatNumber } from "@/lib/format";
+import { ThemeToggle } from "./theme-toggle";
 
 const navItems = [
   { label: "Overview", path: "", Icon: LayoutDashboard },
@@ -60,6 +61,7 @@ export function AnalysisShell({
           </div>
         </div>
         <div className="topbar-actions">
+          <ThemeToggle />
           <details className="export-menu">
             <summary className="button">
               <Download aria-hidden="true" size={16} />

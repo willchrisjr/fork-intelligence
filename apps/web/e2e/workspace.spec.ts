@@ -2,6 +2,20 @@ import { expect, test } from "@playwright/test";
 import { analysisFixture, installApiMocks } from "./mocks";
 
 test.describe("analysis workspace", () => {
+  test("applies and changes a persisted dark theme in the workspace", async ({
+    page,
+  }) => {
+    await installApiMocks(page);
+    await page.addInitScript(() => {
+      localStorage.setItem("fork-intelligence-theme", "dark");
+    });
+    await page.goto("/analyses/analysis-1");
+
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await page.getByRole("button", { name: "Switch to light mode" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  });
+
   test("shows progressive partial results, quota warning, exports, and cancellation", async ({
     page,
   }) => {

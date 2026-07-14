@@ -1,80 +1,74 @@
 # Roadmap
 
-Roadmap items are outcomes, not commitments. Each milestone exits only with its
-checks reported and limitations updated.
+The single-tenant public-repository MVP is complete. The items below improve
+coverage, resilience, or deployment scope; they are not hidden blockers in the
+current end-to-end workflow.
 
-## M0 — Foundation
+## Priority 1 — Increase analysis coverage
 
-- Research, product requirements, threat model, system/data/pipeline design, ADRs.
-- Monorepo boundaries, OpenAPI contract, synthetic fixture design, local
-  PostgreSQL/Redis workflow.
-- Exit: no unresolved architecture/security blocker and source register current.
+1. Configure a scoped server-side GitHub credential and implement the optional
+   GraphQL metadata accelerator with REST fallback, partial-error handling, cost
+   budgeting, and contract fixtures.
+2. Implement the three-branch planner described in the architecture: default
+   branch first, then recently active and meaningfully ahead branches within the
+   configured cap.
+3. Complete bounded blob hydration for deep analyses so more shortlisted commits
+   receive patch fingerprints, file categories, and dependency evidence instead
+   of an explicit `missing_blobs` result.
+4. Exercise these changes on medium and large real fork networks and publish
+   updated quota, latency, disk, and evidence-coverage benchmarks.
 
-## M1 — Executable scaffold
+Exit criteria: authenticated mode materially increases accessible coverage;
+REST-only mode remains correct; branch selection is visible and reproducible;
+and deep-analysis evidence coverage improves without weakening resource limits.
 
-- Next.js web, FastAPI API and worker entrypoints, PostgreSQL migrations, Redis
-  queue, durable progress/events, health checks, CI and formatting/type/lint/test
-  harnesses.
-- Exit: clean startup proves web/API/worker/database/queue communication.
+## Priority 2 — Automate operations and recovery
 
-## M2 — Public metadata vertical slice
+1. Add the scheduled retention job for expired analyses, exports, and
+   unreferenced Git stores with dry-run, audit counts, and active-run protection.
+2. Add periodic reconciliation for durable queued/running work after broker or
+   worker interruption, building on the existing idempotent manual resume path.
+3. Ship metrics, structured operational events, dashboards, and alerts for queue
+   age, stage latency, GitHub quota, Git failures, disk watermarks, and SSE lag.
+4. Automate PostgreSQL backup/restore drills and document recovery objectives.
 
-- Safe submission, REST resolution and paginated fork census, anonymous mode,
-  optional authenticated GraphQL acceleration, snapshots, progress, quota/error
-  states, and evidence table.
-- Exit: one real public repository produces a persisted visible census.
+Exit criteria: cleanup and reconciliation are safe under fault injection;
+operators can detect stalled or capacity-limited analyses; and a clean restore
+recovers durable analyses, evidence, and ordered events.
 
-## M3 — Git intelligence
+## Priority 3 — Improve the investigator workflow
 
-- Bare network stores, namespaced refs, branch planner, merge bases,
-  ahead/behind, unique commits, stable patch IDs, composition, and actual Git
-  fixtures.
-- Exit: mirror/divergent and covered rebase/cherry-pick/squash cases are correct.
+1. Add saved/shareable analysis labels and incremental refresh while preserving
+   immutable historical snapshots.
+2. Add repository-health alerts and upstream-absorption tracking for valuable
+   patches that later appear upstream.
+3. Expand dependency ecosystems and strengthen normalized-diff and change-family
+   methods with new deterministic fixtures.
+4. Add comparison annotations and maintainer-oriented evidence queues without
+   mutating upstream repositories.
 
-## M4 — Explainable interpretation
+Exit criteria: refreshed results remain provenance-safe, notifications link to
+new evidence, and every new interpretation has deterministic fallback behavior.
 
-- Raw metrics, separate score dimensions and profiles, confidence/coverage,
-  deterministic classifications, reason codes, and detail pages.
-- Exit: every score and classification is reproducible and evidence-linked.
+## Priority 4 — Prepare for public or multi-tenant deployment
 
-## M5 — Comparison, map, and exports
+1. Add authentication, tenant authorization, per-tenant quotas, audit logs, and
+   credential lifecycle management.
+2. Add GitHub App installation, signed webhook ingestion, delivery
+   deduplication, and private-repository support.
+3. Add edge abuse controls, TLS/private service networking, encrypted backups,
+   deployment-specific secrets management, and an external operational security
+   review.
 
-- Upstream-plus-two comparison, overlap/change matrices, lineage map with table
-  alternative, JSON/CSV/Markdown exports.
-- Exit: users navigate claim to evidence and export the same provenance.
+Exit criteria: private data cannot cross tenants; credentials are scoped and
+rotatable; webhook replay is safe; and the deployment threat model and recovery
+plan pass independent review.
 
-## M6 — Deterministic directions
+## Later exploration
 
-- Versioned feature vectors, agglomerative clusters, heuristic labels, cluster
-  cards, change-family matrix, and method fixtures.
-- Exit: membership/labels are stable and explainable without an LLM.
-
-## M7 — Hardening and release readiness
-
-- Browser/accessibility/security review, failure recovery, benchmark fixtures,
-  real-repository smoke, deployment/operations runbooks, retention, and
-  independent review.
-- Exit: end-to-end MVP is usable and validation is reported accurately.
-
-## Near-term after MVP
-
-- Saved/public shareable analyses and incremental refresh.
-- More dependency ecosystems and stronger normalized-diff/change-family methods.
-- Repository health alerts and upstream absorption tracking.
-- GitHub App installation and webhook-driven refresh.
-
-## Intermediate
-
-- Private repositories with tenant isolation and credential lifecycle.
-- Scheduled monitoring, security-patch propagation, maintainer workflows, and
-  review-only pull-request candidate recommendations.
-- Organization dashboards and evidence query interface.
-- Consider evidence-grounded AI enrichment only after a new ADR/threat review;
-  deterministic behavior remains the fallback.
-
-## Long-term
-
-- Related repositories not declared as forks and cross-forge provenance.
-- GitLab and Bitbucket.
-- Enterprise internal-fork governance and historical research datasets.
-- Review-gated integration assistance; never automatic merge by default.
+- Evidence-grounded AI summaries after a new ADR and prompt-injection review;
+  deterministic analysis remains authoritative and usable without an AI key.
+- Related repositories that are not declared GitHub forks and cross-forge
+  provenance for GitLab and Bitbucket.
+- Organization dashboards, historical research datasets, and review-gated
+  integration recommendations. Automatic merge remains out of scope.

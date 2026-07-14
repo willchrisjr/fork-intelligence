@@ -15,8 +15,9 @@
 - SQLite 3.54.0
 - GitHub CLI authenticated and API reachable
 - Colima 0.10.3, Docker CLI 29.6.1/server 29.5.2, Docker Compose 5.3.1
-- PostgreSQL 17, Redis 7.4, API, worker, migration, and web containers are
-  running through the application Compose profile
+- PostgreSQL 17, Redis 7.4, API, worker, migration, and web containers were
+  validated through the application Compose profile; the Colima daemon may be
+  stopped between active development sessions
 
 ## Completed
 
@@ -37,6 +38,8 @@
 - Next.js submission, analysis workspace, fork detail, evidence inspector,
   comparison, evolution, directions, methodology, responsive states, and
   same-origin API proxy are implemented.
+- A persisted, system-aware light/dark theme is available on every primary
+  product surface, including theme-aware lineage and Cytoscape graph colors.
 - Independent security review completed with no P0 finding. Confirmed P1 issues
   were corrected: bounded Git I/O/deadlines, process-group termination,
   quarantined oversized stores, slash-safe refs, encoded GitHub paths, terminal
@@ -66,10 +69,13 @@
 - Documentation internal-link/source-register checks passed; Markdown was
   formatted with Prettier.
 - Ruff format/lint, strict mypy, 104 platform tests, 2 isolated PostgreSQL/Redis
-  integration tests, 9 frontend unit tests, TypeScript, ESLint, Prettier,
+  integration tests, 10 frontend unit tests, TypeScript, ESLint, Prettier,
   OpenAPI generation, contract types, and Next production build passed.
-- Playwright passed 19 behavioral scenarios at desktop, mobile portrait, and
+- Playwright passed 21 behavioral scenarios at desktop, mobile portrait, and
   mobile landscape; three reference captures also passed.
+- Dark-mode persistence, workspace switching, and the production rendering were
+  checked in Chromium; the latest dark landing render was compared directly to
+  the accepted landing concept.
 - Native-resolution concept/capture comparisons and a live Playwright CLI review
   covered landing, completed real analysis, comparison, evolution, responsive
   navigation, accessibility tree, headers, console, and evidence links.
@@ -80,7 +86,7 @@
 
 ## Failed validation
 
-- The in-app Browser runtime failed twice during initialization with
+- The in-app Browser runtime failed during repeated initialization attempts with
   `Cannot redefine property: process`; the documented Playwright CLI/test
   fallback passed outside the macOS sandbox.
 - A sandboxed Chromium run failed because macOS denied Mach-port registration;
@@ -90,12 +96,15 @@
 
 ## Next actions
 
-1. Optional: configure a server-side GitHub token for larger authenticated
-   censuses.
-2. Optional: implement the deferred GraphQL accelerator, scheduled retention
-   job, and non-default branch planner.
-3. Before any public/multi-tenant deployment, add user authentication, tenant
-   authorization, stronger edge abuse controls, and an operational review.
+1. Increase evidence coverage with authenticated GitHub acceleration, the
+   three-branch planner, and bounded deep blob hydration.
+2. Automate scheduled retention, durable-job reconciliation, observability, and
+   backup/restore drills.
+3. Improve saved/incremental investigations and upstream-absorption tracking.
+4. Add authentication, tenant isolation, GitHub App/private-repository support,
+   and stronger edge controls only before public or multi-tenant deployment.
+
+Detailed sequencing and exit criteria are maintained in `docs/ROADMAP.md`.
 
 ## Active delegated workstreams
 
@@ -113,6 +122,8 @@
 - Core analysis is deterministic and works without an LLM key.
 - REST is the anonymous GitHub baseline; GraphQL is an authenticated accelerator.
 - Deep Git analysis is bounded and sampling is always disclosed.
+- Theme selection is local browser state; it changes presentation only and does
+  not alter analysis data or shared API contracts.
 - Public submission is admission-controlled; repeated analyses for one
   repository serialize, queue depth and disk watermarks are enforced, and Redis
   per-client throttling is a defense-in-depth layer.

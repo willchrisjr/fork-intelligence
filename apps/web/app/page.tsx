@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Brand } from "@/components/brand";
 import { LineagePreview } from "@/components/lineage-preview";
 import { RepositoryForm } from "@/components/repository-form";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LandingPage() {
   return (
@@ -10,8 +11,9 @@ export default function LandingPage() {
       <header className="landing-header">
         <div className="landing-header-inner">
           <Brand />
-          <nav aria-label="Primary">
+          <nav className="landing-actions" aria-label="Primary">
             <Link href="/methodology">Methodology</Link>
+            <ThemeToggle />
           </nav>
         </div>
       </header>

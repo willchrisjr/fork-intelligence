@@ -1,19 +1,16 @@
 "use client";
 
 import cytoscape from "cytoscape";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EvolutionGraph as EvolutionGraphData } from "@/lib/types";
 
-const classColors: Record<string, string> = {
-  mirror: "#7d8898",
-  contribution: "#0b57e3",
-  experimental: "#d97706",
-  specialized: "#6938d3",
-  compatibility_patch: "#b54708",
-  maintained_continuation: "#078a7b",
-  independent_direction: "#1e6fa8",
-  unknown: "#98a2b3",
-};
+const THEME_EVENT = "fork-intelligence:theme-change";
+
+function cssColor(name: string): string {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+}
 
 export default function EvolutionGraph({
   graph,
@@ -38,17 +35,34 @@ export default function EvolutionGraph({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<cytoscape.Core | undefined>(undefined);
+  const [themeVersion, setThemeVersion] = useState(0);
+
+  useEffect(() => {
+    const refreshTheme = () => setThemeVersion((version) => version + 1);
+    window.addEventListener(THEME_EVENT, refreshTheme);
+    return () => window.removeEventListener(THEME_EVENT, refreshTheme);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
+    const classColors: Record<string, string> = {
+      mirror: cssColor("--muted"),
+      contribution: cssColor("--cobalt"),
+      experimental: cssColor("--amber"),
+      specialized: cssColor("--violet"),
+      compatibility_patch: "#ef8b4b",
+      maintained_continuation: cssColor("--teal"),
+      independent_direction: "#53a8df",
+      unknown: cssColor("--muted"),
+    };
     const clusterColors = new Map<string, string>();
     const palette = [
-      "#0b57e3",
-      "#078a7b",
-      "#6938d3",
-      "#d97706",
-      "#1e6fa8",
-      "#bd2c73",
+      cssColor("--cobalt"),
+      cssColor("--teal"),
+      cssColor("--violet"),
+      cssColor("--amber"),
+      "#53a8df",
+      "#e865a3",
     ];
     const colorFor = (node: EvolutionGraphData["nodes"][number]) => {
       if (colorBy === "classification")
@@ -86,7 +100,7 @@ export default function EvolutionGraph({
             width: "data(size)",
             height: "data(size)",
             label: "data(label)",
-            color: "#071327",
+            color: cssColor("--ink"),
             "font-family": "Inter, sans-serif",
             "font-size": 10,
             "text-wrap": "ellipsis",
@@ -100,8 +114,8 @@ export default function EvolutionGraph({
           selector: "edge",
           style: {
             width: 1.5,
-            "line-color": "#bac4d2",
-            "target-arrow-color": "#bac4d2",
+            "line-color": cssColor("--line-strong"),
+            "target-arrow-color": cssColor("--line-strong"),
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
             "arrow-scale": 0.7,
@@ -111,14 +125,14 @@ export default function EvolutionGraph({
           selector: "edge[kind = 'similarity']",
           style: {
             "line-style": "dashed",
-            "line-color": "#6938d3",
+            "line-color": cssColor("--violet"),
             "target-arrow-shape": "none",
           },
         },
         {
           selector: ":selected",
           style: {
-            "border-color": "#071327",
+            "border-color": cssColor("--ink"),
             "border-width": 4,
             "border-opacity": 1,
           },
@@ -164,7 +178,7 @@ export default function EvolutionGraph({
       instance.destroy();
       instanceRef.current = undefined;
     };
-  }, [colorBy, graph, mode, onReady, onSelect, sizeBy]);
+  }, [colorBy, graph, mode, onReady, onSelect, sizeBy, themeVersion]);
 
   useEffect(() => {
     const instance = instanceRef.current;

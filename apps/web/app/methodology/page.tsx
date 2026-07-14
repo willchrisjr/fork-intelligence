@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Brand } from "@/components/brand";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const stages = [
   [
@@ -43,10 +44,13 @@ export default function MethodologyPage() {
     <>
       <header className="method-header">
         <Brand />
-        <Link className="button" href="/">
-          <ArrowLeft size={15} />
-          Analyze a repository
-        </Link>
+        <div className="method-actions">
+          <ThemeToggle />
+          <Link className="button" href="/">
+            <ArrowLeft size={15} />
+            Analyze a repository
+          </Link>
+        </div>
       </header>
       <main className="methodology" id="main-content">
         <header className="method-hero">
