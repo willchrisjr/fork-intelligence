@@ -37,3 +37,9 @@
 - **D014 - Browser fallback:** the in-app browser runtime was unusable on this
   host, so the standalone Playwright workflow is the accepted browser evidence;
   macOS browser processes require execution outside the filesystem sandbox.
+- **D015 - GitHub governance:** all routine work uses focused branches and pull
+  requests, full local validation plus hosted CI, squash-only merges, automatic
+  branch deletion, CODEOWNERS review routing, full-SHA-pinned Actions, and
+  reviewed Dependabot updates. The current private-repository plan cannot
+  server-enforce branch rules or secret scanning; those controls become required
+  if the plan is upgraded.
