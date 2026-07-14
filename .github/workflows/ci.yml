@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: fork_intelligence
+          POSTGRES_USER: fork_intelligence
+          POSTGRES_PASSWORD: fork_intelligence
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U fork_intelligence"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://fork_intelligence:fork_intelligence@localhost:5432/fork_intelligence
+      REDIS_URL: redis://localhost:6379/0
+      FORK_INTELLIGENCE_RUN_POSTGRES_TESTS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --directory services/platform --all-groups --frozen
+      - run: pnpm db:migrate
+      - run: uv run --directory services/platform alembic downgrade base
+      - run: pnpm db:migrate
+      - run: pnpm check:ci
+      - run: pnpm --filter @fork-intelligence/web exec playwright install --with-deps chromium
+      - run: pnpm test:e2e

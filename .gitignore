@@ -1,0 +1,49 @@
+# macOS
+.DS_Store
+
+# Editor and IDE settings
+.idea/
+.vscode/
+*.swp
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs and temporary files
+*.log
+tmp/
+temp/
+
+# JavaScript / Next.js
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+output/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+dist/
+*.egg-info/
+
+# Runtime data
+data/
+.data/
+exports/
+.coverage
+
+# TypeScript incremental state
+*.tsbuildinfo
+
+# Local tooling
+.turbo/
+.pnpm-store/

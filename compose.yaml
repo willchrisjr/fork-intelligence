@@ -1,0 +1,109 @@
+name: fork-intelligence
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: fork_intelligence
+      POSTGRES_USER: fork_intelligence
+      POSTGRES_PASSWORD: fork_intelligence
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U fork_intelligence -d fork_intelligence"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - redis-data:/data
+
+  api:
+    profiles: ["application"]
+    build:
+      context: ./services/platform
+    environment: &platform-environment
+      FORK_INTELLIGENCE_ENVIRONMENT: production
+      FORK_INTELLIGENCE_WEB_ORIGIN: http://localhost:3000
+      FORK_INTELLIGENCE_DATABASE_URL: postgresql+psycopg://fork_intelligence:fork_intelligence@postgres:5432/fork_intelligence
+      FORK_INTELLIGENCE_REDIS_URL: redis://redis:6379/0
+      FORK_INTELLIGENCE_GIT_STORE_ROOT: /app/.data/git-networks
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    volumes:
+      - git-data:/app/.data/git-networks
+
+  migrate:
+    profiles: ["application"]
+    build:
+      context: ./services/platform
+    command: ["alembic", "upgrade", "head"]
+    environment: *platform-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    profiles: ["application"]
+    build:
+      context: ./services/platform
+    command: ["dramatiq", "fork_intelligence.worker.tasks"]
+    environment: *platform-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - git-data:/app/.data/git-networks
+
+  web:
+    profiles: ["application"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      API_BASE_URL: http://api:8000
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  redis-data:
+  git-data:

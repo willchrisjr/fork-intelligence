@@ -1,0 +1,120 @@
+# Status
+
+- Absolute project path: `/Users/wma/Codex/Developer/personal/fork-intelligence`
+- Git root: `/Users/wma/Codex/Developer/personal/fork-intelligence`
+- Branch: `main`
+- Project state: new greenfield implementation in its dedicated repository
+- Current milestone: M7 production-MVP validation complete
+
+## Environment
+
+- macOS on Apple Silicon
+- Git 2.54.0
+- Node.js 22.23.1, npm 10.9.8, pnpm 11.7.0
+- Python 3.14.6, uv 0.11.21
+- SQLite 3.54.0
+- GitHub CLI authenticated and API reachable
+- Colima 0.10.3, Docker CLI 29.6.1/server 29.5.2, Docker Compose 5.3.1
+- PostgreSQL 17, Redis 7.4, API, worker, migration, and web containers are
+  running through the application Compose profile
+
+## Completed
+
+- Dedicated project boundary and Git repository confirmed.
+- Product specification, architecture, infrastructure choice, and design
+  direction approved.
+- Repository baseline and root development contracts completed.
+- Non-privileged Docker runtime installed after Docker Desktop required an
+  interactive administrator password; PostgreSQL and Redis health checks pass.
+- Primary-source research, product/architecture documentation, ADRs, and the
+  threat model are complete.
+- pnpm and uv dependency graphs are locked; the approved native pnpm build
+  scripts completed successfully.
+- FastAPI, Dramatiq, PostgreSQL models/migration, Redis dispatch, durable
+  checkpoints/events, GitHub REST traversal, safe Git intelligence, scoring,
+  classification, clustering, comparison, exports, and recovery endpoints are
+  implemented.
+- Next.js submission, analysis workspace, fork detail, evidence inspector,
+  comparison, evolution, directions, methodology, responsive states, and
+  same-origin API proxy are implemented.
+- Independent security review completed with no P0 finding. Confirmed P1 issues
+  were corrected: bounded Git I/O/deadlines, process-group termination,
+  quarantined oversized stores, slash-safe refs, encoded GitHub paths, terminal
+  SSE replay, safe queued-job redispatch, quota-paused partial state, admission
+  limits, and immutable sealed exports.
+- A final containerized `octocat/Hello-World` run completed with three forks
+  discovered, two forks structurally analyzed, ordered event replay, evidence,
+  scoring, one deterministic cluster, comparison, and exports.
+
+## In progress
+
+- None for the MVP handoff. The Compose stack is intentionally left running for
+  local exploration.
+
+## Blockers
+
+- None. Live AI enrichment is intentionally disabled.
+
+## Validation performed
+
+- Project boundary, Git state, installed runtimes, GitHub connectivity, and
+  container runtime verified.
+- The complete Compose application profile builds and starts cleanly; migration,
+  API readiness, worker, web, PostgreSQL, and Redis are healthy.
+- pnpm lockfile passed local supply-chain policy verification; `sharp` and
+  `unrs-resolver` were explicitly approved and built.
+- Documentation internal-link/source-register checks passed; Markdown was
+  formatted with Prettier.
+- Ruff format/lint, strict mypy, 104 platform tests, 2 isolated PostgreSQL/Redis
+  integration tests, 9 frontend unit tests, TypeScript, ESLint, Prettier,
+  OpenAPI generation, contract types, and Next production build passed.
+- Playwright passed 19 behavioral scenarios at desktop, mobile portrait, and
+  mobile landscape; three reference captures also passed.
+- Native-resolution concept/capture comparisons and a live Playwright CLI review
+  covered landing, completed real analysis, comparison, evolution, responsive
+  navigation, accessibility tree, headers, console, and evidence links.
+- Migration upgrade, downgrade-to-base, upgrade, and isolated test-database
+  upgrade were exercised.
+- Real SSE replay returned the terminal event; deterministic JSON export returned
+  a stable ETag; the final comparison returned exactly upstream plus two forks.
+
+## Failed validation
+
+- The in-app Browser runtime failed twice during initialization with
+  `Cannot redefine property: process`; the documented Playwright CLI/test
+  fallback passed outside the macOS sandbox.
+- A sandboxed Chromium run failed because macOS denied Mach-port registration;
+  the approved unsandboxed browser run passed all 19 scenarios.
+- Docker Desktop required an interactive administrator helper installation;
+  approved Colima/Docker Compose provided the equivalent validated runtime.
+
+## Next actions
+
+1. Optional: configure a server-side GitHub token for larger authenticated
+   censuses.
+2. Optional: implement the deferred GraphQL accelerator, scheduled retention
+   job, and non-default branch planner.
+3. Before any public/multi-tenant deployment, add user authentication, tenant
+   authorization, stronger edge abuse controls, and an operational review.
+
+## Active delegated workstreams
+
+- Documentation and primary-source research: complete.
+- Platform implementation: complete and lead-reviewed.
+- Frontend implementation: complete and lead-reviewed.
+- Synthetic fixtures and platform tests: complete.
+- E2E browser workstream: complete.
+- Independent security review: complete; confirmed findings integrated and
+  revalidated.
+
+## Recent decisions
+
+- PostgreSQL is authoritative; Redis is a broker only.
+- Core analysis is deterministic and works without an LLM key.
+- REST is the anonymous GitHub baseline; GraphQL is an authenticated accelerator.
+- Deep Git analysis is bounded and sampling is always disclosed.
+- Public submission is admission-controlled; repeated analyses for one
+  repository serialize, queue depth and disk watermarks are enforced, and Redis
+  per-client throttling is a defense-in-depth layer.
+- Exports are sealed, deterministic database artifacts; partial terminal
+  checkpoints can export with their limitations intact.
