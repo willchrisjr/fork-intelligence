@@ -1,0 +1,8 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  # Next.js image optimization and ESLint's native resolver require these
+  # audited, lockfile-pinned install scripts.
+  sharp: true
+  unrs-resolver: true

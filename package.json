@@ -1,0 +1,31 @@
+{
+  "name": "fork-intelligence",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev": "concurrently -k -n web,api,worker -c blue,green,magenta \"pnpm --filter @fork-intelligence/web dev\" \"uv run --directory services/platform uvicorn fork_intelligence.api.main:app --reload --host 0.0.0.0 --port 8000\" \"uv run --directory services/platform dramatiq fork_intelligence.worker.tasks\"",
+    "infra:up": "docker-compose up -d --wait postgres redis",
+    "infra:down": "docker-compose down",
+    "stack:up": "docker-compose --profile application up -d --build --wait",
+    "stack:down": "docker-compose --profile application down",
+    "db:migrate": "uv run --directory services/platform alembic upgrade head",
+    "contracts": "uv run --directory services/platform python -m fork_intelligence.tools.export_openapi && pnpm --filter @fork-intelligence/contracts generate",
+    "contracts:check": "pnpm contracts && git diff --exit-code -- packages/contracts",
+    "security:secrets": "./scripts/check-no-secrets.sh",
+    "format": "pnpm --filter @fork-intelligence/web format && uv run --directory services/platform ruff format .",
+    "format:check": "pnpm --filter @fork-intelligence/web format:check && uv run --directory services/platform ruff format --check .",
+    "lint": "pnpm --filter @fork-intelligence/web lint && uv run --directory services/platform ruff check .",
+    "typecheck": "pnpm --filter @fork-intelligence/contracts typecheck && pnpm --filter @fork-intelligence/web typecheck && uv run --directory services/platform mypy src",
+    "test": "pnpm --filter @fork-intelligence/web test && uv run --directory services/platform pytest",
+    "test:e2e": "pnpm --filter @fork-intelligence/web test:e2e",
+    "build": "pnpm --filter @fork-intelligence/web build",
+    "smoke:real": "uv run --directory services/platform python -m fork_intelligence.tools.real_smoke octocat/Hello-World",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "check:ci": "pnpm check && pnpm contracts:check && pnpm security:secrets",
+    "check:release": "pnpm check:ci && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
