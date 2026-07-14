@@ -40,6 +40,9 @@
   same-origin API proxy are implemented.
 - A persisted, system-aware light/dark theme is available on every primary
   product surface, including theme-aware lineage and Cytoscape graph colors.
+- GitHub development governance is repository-local and reviewable: contribution
+  guidance, pull request/issue/security templates, code ownership, pinned-action
+  CI, and weekly grouped dependency updates are configured.
 - Independent security review completed with no P0 finding. Confirmed P1 issues
   were corrected: bounded Git I/O/deadlines, process-group termination,
   quarantined oversized stores, slash-safe refs, encoded GitHub paths, terminal
@@ -124,6 +127,10 @@ Detailed sequencing and exit criteria are maintained in `docs/ROADMAP.md`.
 - Deep Git analysis is bounded and sampling is always disclosed.
 - Theme selection is local browser state; it changes presentation only and does
   not alter analysis data or shared API contracts.
+- `main` development is pull-request-first with green CI and squash merge. The
+  private repository's current GitHub Free plan does not support server-enforced
+  rulesets; upgrading to GitHub Pro would allow the documented policy to become
+  mandatory branch protection.
 - Public submission is admission-controlled; repeated analyses for one
   repository serialize, queue depth and disk watermarks are enforced, and Redis
   per-client throttling is a defense-in-depth layer.

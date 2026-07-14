@@ -90,3 +90,10 @@ validated behavior, priorities, methodology, and limitations.
 The most recent real-repository smoke analyzed `octocat/Hello-World` with a
 three-fork census and two-fork structural shortlist. The full network was
 intentionally sampled and the UI/API disclose that cap.
+
+## Contributing
+
+Development uses short-lived branches, pull requests, required CI, squash
+merges, and automated dependency proposals. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+and [AGENTS.md](AGENTS.md) before changing the repository. Do not push feature
+work directly to `main`.

@@ -1,0 +1,32 @@
+name: Bug report
+description: Report reproducible incorrect behavior or a regression
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: What happened, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide minimal safe steps. Do not include credentials or private repository content.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Commit, browser, operating system, deployment mode, and relevant sanitized configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Include safe logs, screenshots, or analysis IDs. Remove secrets and sensitive repository data.

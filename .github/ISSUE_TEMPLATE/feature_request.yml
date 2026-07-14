@@ -1,0 +1,25 @@
+name: Feature request
+description: Propose a focused product or engineering improvement
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What investigator, maintainer, or operator problem should be solved?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe observable behavior and evidence requirements, not just an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and risks
+      description: Note security boundaries, data provenance, compatibility, or operational concerns.

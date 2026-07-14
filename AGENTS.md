@@ -42,11 +42,31 @@
 - Every handoff reports files, interfaces, tests, assumptions, limitations, and
   unmet acceptance criteria.
 
+## GitHub workflow
+
+- Treat `main` as protected. If work starts on `main`, create a focused branch
+  before editing; Codex branches use `agent/<short-description>`.
+- Never push feature work directly to `main`, force-push a shared branch, bypass
+  required checks, or use an administrator override for routine development.
+- Keep commits logical and terse. Inspect `git status`, the staged diff, and
+  generated files before every commit.
+- Publish changes through a pull request using the repository template. Include
+  scope, risk, validation, security impact, documentation impact, and any known
+  limitation.
+- Wait for required CI to pass before merge. Resolve review threads and update
+  the branch when `main` has moved.
+- Prefer squash merge for focused pull requests and delete merged branches.
+- Pin third-party GitHub Actions to full commit SHAs and retain the release tag
+  in a comment so automated updates remain reviewable.
+- Review Dependabot changes like ordinary code: inspect release notes and lockfile
+  changes, run checks, and never auto-merge major or security-sensitive updates.
+
 ## Definition of done
 
 A change is done when focused tests, lint, types, and relevant browser checks
 pass; evidence and security boundaries remain intact; docs/status are current;
-and the final diff contains no unrelated or generated runtime artifacts.
+the final diff contains no unrelated or generated runtime artifacts; and the
+pull request is green and accurately describes the delivered behavior.
 
 ## Prohibited shortcuts
 
