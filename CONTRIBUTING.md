@@ -40,7 +40,9 @@ pnpm test:e2e
 ```
 
 If a check cannot run locally, explain why and identify the residual risk in the
-pull request. CI must still pass before merge.
+pull request. CI must pass before merge when GitHub-hosted Actions is available.
+While the tracked account billing lock prevents runners from starting, the full
+local suite and a documented exception are required.
 
 ## Commit and pull request
 
@@ -56,11 +58,10 @@ Use squash merge after required checks pass, then delete the merged branch.
 Administrator bypass is reserved for a documented emergency recovery and must be
 followed by a corrective pull request.
 
-GitHub currently cannot enforce the documented `main` policy for this private
-repository on its plan. This is a platform limitation, not permission to bypass
-the workflow: contributors and development agents must still follow it. If the
-repository is upgraded to GitHub Pro, Team, or Enterprise, configure the rule as
-mandatory immediately.
+GitHub enforces the documented `main` policy through the active `Protect main`
+ruleset. No contributor or development agent may bypass it for routine work.
+Required CI must be added to the ruleset as soon as the tracked account billing
+lock is cleared and the hosted check passes.
 
 ## Dependency updates
 

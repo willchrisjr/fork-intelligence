@@ -40,6 +40,6 @@
 - **D015 - GitHub governance:** all routine work uses focused branches and pull
   requests, full local validation plus hosted CI, squash-only merges, automatic
   branch deletion, CODEOWNERS review routing, full-SHA-pinned Actions, and
-  reviewed Dependabot updates. The current private-repository plan cannot
-  server-enforce branch rules or secret scanning; those controls become required
-  if the plan is upgraded.
+  reviewed Dependabot updates. Public visibility enables secret scanning, push
+  protection, and an active `main` ruleset. Hosted CI becomes required by that
+  ruleset after the account billing lock is cleared and the check passes.
