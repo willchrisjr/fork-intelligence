@@ -46,6 +46,9 @@
 - GitHub repository settings permit squash merges only, delete merged branches,
   require full commit SHAs for third-party Actions, and enable Dependabot
   vulnerability alerts and security updates.
+- The GitHub repository is public. Secret scanning, push protection, and an
+  active `Protect main` ruleset now enforce pull-request-only, squash-only,
+  linear changes while blocking deletion and force pushes.
 - Independent security review completed with no P0 finding. Confirmed P1 issues
   were corrected: bounded Git I/O/deadlines, process-group termination,
   quarantined oversized stores, slash-safe refs, encoded GitHub paths, terminal
@@ -92,14 +95,10 @@
 
 ## Failed validation
 
-- GitHub-hosted Actions returned `startup_failure` before creating any job for
-  both the full schema-valid CI workflow and a temporary one-line smoke
-  workflow. Repository Actions are enabled, but the authenticated CLI cannot
-  inspect account billing/budget state without an additional credential scope.
-- GitHub rejected secret scanning for this private repository under the current
-  plan. Private-repository rulesets are also unavailable without GitHub Pro,
-  Team, or Enterprise, so the documented pull-request policy is not yet
-  server-enforced.
+- GitHub-hosted Actions can now parse and create the `CI / checks` job, but the
+  job annotation says the account is locked due to a billing issue. Required CI
+  remains intentionally absent from the `main` ruleset until that account-level
+  issue is resolved and the check passes.
 - The in-app Browser runtime failed during repeated initialization attempts with
   `Cannot redefine property: process`; the documented Playwright CLI/test
   fallback passed outside the macOS sandbox.
@@ -138,10 +137,10 @@ Detailed sequencing and exit criteria are maintained in `docs/ROADMAP.md`.
 - Deep Git analysis is bounded and sampling is always disclosed.
 - Theme selection is local browser state; it changes presentation only and does
   not alter analysis data or shared API contracts.
-- `main` development is pull-request-first with green CI and squash merge. The
-  private repository's current GitHub Free plan does not support server-enforced
-  rulesets; upgrading to GitHub Pro would allow the documented policy to become
-  mandatory branch protection.
+- The public repository's `main` branch is protected by an active ruleset that
+  requires pull requests, linear squash-only history, and resolved review
+  threads while blocking deletion and force pushes. Required CI will be added
+  after the account billing lock is cleared.
 - Public submission is admission-controlled; repeated analyses for one
   repository serialize, queue depth and disk watermarks are enforced, and Redis
   per-client throttling is a defense-in-depth layer.
