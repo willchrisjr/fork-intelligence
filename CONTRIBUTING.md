@@ -56,6 +56,12 @@ Use squash merge after required checks pass, then delete the merged branch.
 Administrator bypass is reserved for a documented emergency recovery and must be
 followed by a corrective pull request.
 
+GitHub currently cannot enforce the documented `main` policy for this private
+repository on its plan. This is a platform limitation, not permission to bypass
+the workflow: contributors and development agents must still follow it. If the
+repository is upgraded to GitHub Pro, Team, or Enterprise, configure the rule as
+mandatory immediately.
+
 ## Dependency updates
 
 Dependabot proposes weekly grouped updates for pnpm, uv, GitHub Actions, and
