@@ -5,7 +5,7 @@ description = "Evidence-backed GitHub fork intelligence API and worker"
 requires-python = ">=3.13"
 dependencies = [
   "alembic>=1.16,<2",
-  "dramatiq[redis]>=1.18,<2",
+  "dramatiq[redis]>=2.2.0,<3",
   "fastapi>=0.116,<1",
   "httpx>=0.28,<1",
   "psycopg[binary]>=3.2,<4",
