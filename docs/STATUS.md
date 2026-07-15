@@ -65,7 +65,14 @@
 
 ## Blockers
 
-- None. Live AI enrichment is intentionally disabled.
+- GitHub-hosted runners are blocked by an account billing lock. The exact
+  annotation and recovery checklist are tracked in issue #2 and
+  `docs/HANDOFF.md`. Local validation remains available, but `checks` cannot yet
+  be required by the `main` ruleset.
+- Dependabot reports two open moderate alerts: pytest `<9.0.3` and the PostCSS
+  `8.4.31` instance pulled through Next.js. Focused remediation is the first code
+  work after hosted CI is restored.
+- Live AI enrichment is intentionally disabled and is not an MVP blocker.
 
 ## Validation performed
 
