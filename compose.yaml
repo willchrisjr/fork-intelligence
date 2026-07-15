@@ -19,7 +19,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:8.8-alpine
     command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
     ports:
       - "127.0.0.1:6379:6379"
