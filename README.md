@@ -83,9 +83,9 @@ pnpm smoke:real
 ```
 
 See [PLANS.md](PLANS.md), [docs/STATUS.md](docs/STATUS.md),
-[docs/ROADMAP.md](docs/ROADMAP.md), and
+[docs/HANDOFF.md](docs/HANDOFF.md), [docs/ROADMAP.md](docs/ROADMAP.md), and
 [docs/METHODOLOGY.md](docs/METHODOLOGY.md) for the current implementation scope,
-validated behavior, priorities, methodology, and limitations.
+validated behavior, session handoff, priorities, methodology, and limitations.
 
 The most recent real-repository smoke analyzed `octocat/Hello-World` with a
 three-fork census and two-fork structural shortlist. The full network was
@@ -93,7 +93,9 @@ intentionally sampled and the UI/API disclose that cap.
 
 ## Contributing
 
-Development uses short-lived branches, pull requests, required CI, squash
-merges, and automated dependency proposals. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-and [AGENTS.md](AGENTS.md) before changing the repository. Do not push feature
-work directly to `main`.
+Development uses short-lived branches, pull requests, squash merges, and
+automated dependency proposals. Required hosted CI is temporarily blocked by the
+tracked GitHub account billing lock; complete local validation and a documented
+exception are required until it is restored. Read
+[CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before changing the
+repository. Do not push feature work directly to `main`.
