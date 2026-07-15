@@ -13,7 +13,7 @@ dependencies = [
   "redis>=5,<7",
   "sqlalchemy>=2.0.41,<3",
   "structlog>=25.4,<26",
-  "uvicorn[standard]>=0.35,<1",
+  "uvicorn[standard]>=0.51.0,<1",
 ]
 
 [dependency-groups]

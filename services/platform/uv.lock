@@ -213,7 +213,7 @@ requires-dist = [
     { name = "redis", specifier = ">=5,<7" },
     { name = "sqlalchemy", specifier = ">=2.0.41,<3" },
     { name = "structlog", specifier = ">=25.4,<26" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.51.0,<1" },
 ]
 
 [package.metadata.requires-dev]
