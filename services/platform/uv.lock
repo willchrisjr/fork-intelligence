@@ -208,7 +208,7 @@ requires-dist = [
     { name = "dramatiq", extras = ["redis"], specifier = ">=1.18,<2" },
     { name = "fastapi", specifier = ">=0.116,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2,<4" },
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4,<4" },
     { name = "pydantic-settings", specifier = ">=2.10,<3" },
     { name = "redis", specifier = ">=5,<7" },
     { name = "sqlalchemy", specifier = ">=2.0.41,<3" },
