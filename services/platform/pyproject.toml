@@ -21,7 +21,7 @@ dev = [
   "aiosqlite>=0.21,<1",
   "mypy>=1.17,<2",
   "pytest>=8.4,<9",
-  "pytest-cov>=6.2,<7",
+  "pytest-cov>=7.1.0,<8",
   "ruff>=0.12,<1",
 ]
 
