@@ -2,7 +2,7 @@ name: fork-intelligence
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: fork_intelligence
       POSTGRES_USER: fork_intelligence
