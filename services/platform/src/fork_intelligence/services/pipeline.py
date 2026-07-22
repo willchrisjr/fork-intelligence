@@ -176,11 +176,15 @@ class AnalysisPipeline:
         self._stage(analysis, "resolution", 0.05)
         identifier = parse_repository_identifier(analysis.requested_identifier)
         requested_data = self.github.get_repository(identifier.owner, identifier.name)
+        # Captured per fetch: the router only remembers its latest call.
+        requested_provenance = self._provider_provenance(self._router_field_provenance())
         source = requested_data.get("source")
         root_data = requested_data
+        root_provenance = requested_provenance
         if source and source["full_name"].lower() != requested_data["full_name"].lower():
             source_identifier = parse_repository_identifier(source["full_name"])
             root_data = self.github.get_repository(source_identifier.owner, source_identifier.name)
+            root_provenance = self._provider_provenance(self._router_field_provenance())
 
         network = self.session.scalar(
             select(RepositoryNetwork).where(
@@ -198,8 +202,8 @@ class AnalysisPipeline:
         analysis.network_id = network.id
         analysis.requested_repository_id = requested.id
         analysis.root_repository_id = root.id
-        self._upsert_snapshot(analysis.id, root, root_data)
-        self._upsert_snapshot(analysis.id, requested, requested_data)
+        self._upsert_snapshot(analysis.id, root, root_data, root_provenance)
+        self._upsert_snapshot(analysis.id, requested, requested_data, requested_provenance)
         self._finish_stage(
             analysis,
             "resolution",
@@ -253,7 +257,11 @@ class AnalysisPipeline:
                     repository = self._upsert_repository(item, analysis.network_id)
                     repository.parent_repository_id = parent.id
                     repository.source_repository_id = root.id
-                    self._upsert_snapshot(analysis.id, repository, item)
+                    # Fork pages come from REST pagination, never the GraphQL
+                    # accelerator, so this snapshot is attributed to REST alone.
+                    self._upsert_snapshot(
+                        analysis.id, repository, item, self._provider_provenance()
+                    )
                     seen.add(repository.github_id)
                     queue.append(repository)
                 if (
@@ -641,6 +649,36 @@ class AnalysisPipeline:
                 )
         self._finish_stage(analysis, "clustering", {"clusters": len(clusters)})
 
+    def _provider_provenance(
+        self, field_provenance: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Provenance for one metadata snapshot.
+
+        Field attribution is passed in rather than read from the router here.
+        The router only remembers its most recent ``get_repository`` call, so
+        reading it at persistence time would stamp fork snapshots -- collected
+        by REST fork pagination -- with the root repository's attribution, and
+        credit GraphQL for data it never supplied.
+        """
+        provenance: dict[str, Any] = {
+            "source": "github_rest",
+            "api_version": self.settings.github_api_version,
+            "retrieved_at": datetime.now(UTC).isoformat(),
+            "credential_mode": self.github.credential_mode,
+        }
+        if field_provenance:
+            provenance |= field_provenance
+        return provenance
+
+    def _router_field_provenance(self) -> dict[str, Any] | None:
+        """Field attribution for the repository just fetched, if the router reports it.
+
+        Must be called immediately after the corresponding ``get_repository``:
+        a later call overwrites it.
+        """
+        value = getattr(self.github, "last_repository_provenance", None)
+        return value if isinstance(value, dict) and value else None
+
     def _sync_access_provenance(self, analysis: AnalysisRun) -> None:
         """Fold the router's access state into the analysis record.
 
@@ -771,7 +809,11 @@ class AnalysisPipeline:
         return repository
 
     def _upsert_snapshot(
-        self, analysis_id: uuid.UUID, repository: Repository, data: dict[str, Any]
+        self,
+        analysis_id: uuid.UUID,
+        repository: Repository,
+        data: dict[str, Any],
+        provenance: dict[str, Any] | None = None,
     ) -> RepositorySnapshot:
         snapshot = self.session.scalar(
             select(RepositorySnapshot).where(
@@ -785,15 +827,15 @@ class AnalysisPipeline:
                 repository_id=repository.id,
                 raw_metadata=data,
                 metrics=_metadata_metrics(data),
-                provenance={
-                    "source": "github_rest",
-                    "api_version": self.settings.github_api_version,
-                    "retrieved_at": datetime.now(UTC).isoformat(),
-                },
+                provenance=provenance or self._provider_provenance(),
             )
             self.session.add(snapshot)
         else:
             snapshot.raw_metadata = data
+            # Refresh attribution alongside the data it describes; leaving the
+            # original would let a resumed run describe this collection with
+            # the previous attempt's transports and errors.
+            snapshot.provenance = provenance or self._provider_provenance()
         return snapshot
 
     def _upsert_branch(

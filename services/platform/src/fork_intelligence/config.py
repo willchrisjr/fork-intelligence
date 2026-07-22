@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     )
     github_api_url: str = "https://api.github.com"
     github_api_version: str = "2026-03-10"
+    github_graphql_enabled: bool = True
+    max_graphql_cost: int = Field(default=50, ge=1, le=1000)
+    max_graphql_branches: int = Field(default=100, ge=1, le=100)
+    graphql_timeout_seconds: float = Field(default=15.0, ge=1, le=60)
     git_store_root: Path = Path(".data/git-networks")
     max_forks: int = Field(default=250, ge=1, le=5000)
     max_github_pages: int = Field(default=5, ge=1, le=50)

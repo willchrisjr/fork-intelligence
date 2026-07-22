@@ -53,7 +53,7 @@ def _router(
 ) -> tuple[GitHubCredentialRouter, list[str]]:
     """Build a router over two mock transports, recording which one served each call."""
     calls: list[str] = []
-    settings = Settings(github_token=token)
+    settings = Settings(github_token=token, github_graphql_enabled=False)
 
     def wrap(label: str, handler: Any) -> Any:
         def handle(request: httpx.Request) -> httpx.Response:
@@ -116,7 +116,7 @@ def test_absent_credential_starts_anonymous_and_discloses_coverage() -> None:
 
 def test_router_sends_the_credential_only_on_the_authenticated_transport() -> None:
     """Assert on the requests the router actually issues, not on client construction."""
-    settings = Settings(github_token=TOKEN)
+    settings = Settings(github_token=TOKEN, github_graphql_enabled=False)
     sent: list[tuple[str, str | None]] = []
 
     def record(label: str, response: httpx.Response) -> Any:
@@ -155,7 +155,7 @@ def test_router_sends_the_credential_only_on_the_authenticated_transport() -> No
 
 
 def test_anonymous_settings_are_tokenless() -> None:
-    router = GitHubCredentialRouter(Settings(github_token=TOKEN))
+    router = GitHubCredentialRouter(Settings(github_token=TOKEN, github_graphql_enabled=False))
 
     with router:
         assert router.anonymous_settings().github_token is None

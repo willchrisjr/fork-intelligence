@@ -1,0 +1,34 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "cost": 1, "remaining": 4987, "nodeCount": 12 },
+    "repository": {
+      "databaseId": 1296269,
+      "name": "Hello-World",
+      "nameWithOwner": "octocat/Hello-World",
+      "url": "https://github.com/octocat/Hello-World",
+      "isFork": false,
+      "isArchived": false,
+      "isDisabled": false,
+      "createdAt": "2011-01-26T19:01:12Z",
+      "updatedAt": "2026-07-01T10:00:00Z",
+      "pushedAt": "2026-06-30T09:30:00Z",
+      "stargazerCount": 2500,
+      "forkCount": 1300,
+      "diskUsage": 108,
+      "owner": { "login": "octocat" },
+      "defaultBranchRef": { "name": "main", "target": { "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+      "primaryLanguage": { "name": "Python" },
+      "licenseInfo": { "spdxId": "MIT" },
+      "watchers": { "totalCount": 42 },
+      "issues": { "totalCount": 7 },
+      "repositoryTopics": { "nodes": [{ "topic": { "name": "forks" } }, { "topic": { "name": "analysis" } }] },
+      "refs": {
+        "totalCount": 2,
+        "nodes": [
+          { "name": "main", "target": { "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+          { "name": "feature/topic", "target": { "oid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" } }
+        ]
+      }
+    }
+  }
+}
