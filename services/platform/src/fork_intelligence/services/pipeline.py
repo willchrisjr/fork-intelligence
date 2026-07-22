@@ -8,8 +8,11 @@ from typing import Any
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from fork_intelligence.adapters.credential_router import (
+    COVERAGE_LIMITATION,
+    GitHubCredentialRouter,
+)
 from fork_intelligence.adapters.git import BareNetworkStore
-from fork_intelligence.adapters.github import GitHubClient
 from fork_intelligence.config import Settings, get_settings
 from fork_intelligence.domain.classification import classify_repository
 from fork_intelligence.domain.clustering import build_vector, cluster_vectors
@@ -18,7 +21,6 @@ from fork_intelligence.domain.scoring import calculate_scores
 from fork_intelligence.errors import GitHubError, PlatformError
 from fork_intelligence.models import (
     AnalysisRun,
-    Branch,
     Classification,
     ClusterMember,
     DevelopmentCluster,
@@ -30,10 +32,33 @@ from fork_intelligence.models import (
     StageCheckpoint,
 )
 from fork_intelligence.services.events import emit_event, require_analysis
+from fork_intelligence.services.persistence import (
+    BranchCandidate,
+    record_branch_plan,
+    record_credential_mode_transition,
+)
+
+BRANCH_PLANNER_VERSION = "2026.07.1"
+
+# Provider conditions that leave committed evidence intact and the run
+# resumable, rather than failing it. Both mean the router ran out of usable
+# access modes: its quota is spent, or every configured credential was refused.
+PROVIDER_EXHAUSTED_CODES = frozenset({"github_rate_limited", "github_unauthorized"})
 
 
 class AnalysisCancelled(Exception):
     pass
+
+
+def _as_utc(value: datetime) -> datetime:
+    """Treat a stored timestamp as UTC.
+
+    Timestamp columns are ``DateTime(timezone=True)`` and every writer uses
+    ``datetime.now(UTC)``, so a naive value can only come from a driver that
+    drops the offset on read. Normalizing keeps deadline arithmetic from
+    raising a TypeError that would misreport the underlying condition.
+    """
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 class AnalysisPipeline:
@@ -42,11 +67,11 @@ class AnalysisPipeline:
         session: Session,
         *,
         settings: Settings | None = None,
-        github: GitHubClient | None = None,
+        github: GitHubCredentialRouter | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
-        self.github = github or GitHubClient(self.settings)
+        self.github = github or GitHubCredentialRouter(self.settings)
         self._owns_github = github is None
 
     def run(self, analysis_id: uuid.UUID) -> None:
@@ -81,27 +106,51 @@ class AnalysisPipeline:
             emit_event(self.session, analysis, "analysis.cancelled")
             self.session.commit()
         except GitHubError as exc:
-            if exc.code != "github_rate_limited":
+            if exc.code not in PROVIDER_EXHAUSTED_CODES:
                 self.session.rollback()
                 analysis = require_analysis(self.session, analysis_id)
+                # A failure unrelated to provider capacity must still not lose a
+                # fallback that already happened; the reduced coverage is part
+                # of how this analysis got where it did.
+                self._sync_access_provenance(analysis)
                 analysis.status = "failed"
                 analysis.error = {"code": exc.code, "message": exc.message}
                 emit_event(self.session, analysis, "analysis.failed", payload=analysis.error)
                 self.session.commit()
                 raise
+            # Reaching here means the router already exhausted every access mode
+            # it had: the credential fell back to anonymous, or none was
+            # configured, and public access is blocked too. Committed evidence
+            # stays untouched and the run is left resumable.
             self.session.rollback()
             analysis = require_analysis(self.session, analysis_id)
+            self._sync_access_provenance(analysis)
+            quota_exhausted = exc.code == "github_rate_limited"
+            resolution = (
+                "Resume after the documented quota reset"
+                if quota_exhausted
+                else "Resume once provider access is restored"
+            )
             analysis.status = "partial"
-            analysis.stage = "waiting_for_quota"
+            analysis.stage = "waiting_for_quota" if quota_exhausted else "waiting_for_provider"
+            # The quota is taken from the router's sanitized snapshot rather
+            # than the raw error details, so only known provider fields reach a
+            # record that is persisted, exported, and rendered in the browser.
+            quota = self.github.quota_snapshot
             analysis.error = {
                 "code": exc.code,
-                "message": "GitHub quota was exhausted; resume after the documented reset",
-                "details": exc.details,
+                "message": f"GitHub access could not continue. {resolution}",
+                "quota": quota,
+                "credential_mode": analysis.credential_mode,
             }
             warning = {
-                "code": "github_rate_limited",
-                "message": "Partial evidence is preserved; resume after GitHub quota resets",
-                "quota": exc.details.get("quota", {}),
+                "code": "provider_access_exhausted",
+                "message": (
+                    "Partial evidence is preserved; no remaining GitHub access mode could "
+                    f"continue. {resolution}"
+                ),
+                "credential_mode": analysis.credential_mode,
+                "quota": quota,
             }
             analysis.warnings = [*analysis.warnings, warning]
             emit_event(self.session, analysis, "analysis.waiting_for_quota", payload=warning)
@@ -177,11 +226,13 @@ class AnalysisPipeline:
             self.settings.max_forks,
         )
         request_budget = self.settings.max_github_requests
-        if self.settings.github_token is None:
+        if self.github.credential_mode != "authenticated":
             request_budget = min(request_budget, 45)
         capped = False
         page_cap_reached = False
         requests_used = 0
+        census_start_mode = self.github.credential_mode
+        discovered_before_downgrade: int | None = None
         while queue and requests_used < request_budget and not capped:
             parent = queue.popleft()
             if parent.github_id in traversed:
@@ -205,7 +256,12 @@ class AnalysisPipeline:
                     self._upsert_snapshot(analysis.id, repository, item)
                     seen.add(repository.github_id)
                     queue.append(repository)
-                analysis.quota_snapshot = page.quota
+                if (
+                    discovered_before_downgrade is None
+                    and self.github.credential_mode != census_start_mode
+                ):
+                    discovered_before_downgrade = len(seen) - 1
+                self._sync_access_provenance(analysis)
                 checkpoint = self.session.scalar(
                     select(StageCheckpoint).where(
                         StageCheckpoint.analysis_id == analysis.id,
@@ -235,6 +291,7 @@ class AnalysisPipeline:
                 if capped:
                     break
         traversal_incomplete = bool(queue) and requests_used >= request_budget
+        credential_mode_changed = self.github.credential_mode != census_start_mode
         analysis.sampling = {
             "expected_network_size": int(root.metadata_json.get("forks") or 0) + 1,
             "accessible_forks": len(seen) - 1,
@@ -242,7 +299,9 @@ class AnalysisPipeline:
             "forks_capped": capped,
             "github_page_cap": self.settings.max_github_pages,
             "github_request_cap": request_budget,
-            "github_request_cap_authenticated": self.settings.github_token is not None,
+            "github_request_cap_authenticated": self.github.credential_mode == "authenticated",
+            "credential_mode": self.github.credential_mode,
+            "credential_mode_changed_during_census": credential_mode_changed,
             "nested_traversal_incomplete": traversal_incomplete,
             "github_page_cap_reached": page_cap_reached,
             "incomplete_reasons": [
@@ -251,10 +310,26 @@ class AnalysisPipeline:
                     (capped, "fork_cap_reached"),
                     (traversal_incomplete, "github_request_budget_reached"),
                     (page_cap_reached, "github_page_cap_reached"),
+                    (credential_mode_changed, "credential_mode_downgraded"),
                 )
                 if condition
             ],
         }
+        if credential_mode_changed:
+            # AC-RA-AGA-003.2: name the scope a mid-census downgrade affected,
+            # since forks listed before it were drawn under a wider budget.
+            analysis.warnings = [
+                *analysis.warnings,
+                {
+                    "code": "credential_mode_downgraded",
+                    "message": (
+                        "Authenticated GitHub access became unavailable during the fork "
+                        "census; remaining discovery used anonymous access"
+                    ),
+                    "credential_mode": self.github.credential_mode,
+                    "repositories_discovered_before_downgrade": discovered_before_downgrade,
+                },
+            ]
         if capped:
             analysis.warnings = [
                 *analysis.warnings,
@@ -414,6 +489,12 @@ class AnalysisPipeline:
                 )
                 self.session.commit()
             except PlatformError as exc:
+                # Provider exhaustion is not specific to this repository -- it
+                # will block every remaining one too. Let it reach the run-level
+                # handler so the analysis is preserved as partial instead of
+                # completing with an empty structural stage.
+                if isinstance(exc, GitHubError) and exc.code in PROVIDER_EXHAUSTED_CODES:
+                    raise
                 warning = {
                     "code": exc.code,
                     "message": (
@@ -560,10 +641,44 @@ class AnalysisPipeline:
                 )
         self._finish_stage(analysis, "clustering", {"clusters": len(clusters)})
 
+    def _sync_access_provenance(self, analysis: AnalysisRun) -> None:
+        """Fold the router's access state into the analysis record.
+
+        Called wherever the pipeline is about to commit, so the effective
+        credential mode and remaining provider quota stay observable while
+        metadata is still being collected rather than only at completion.
+        """
+        for transition in self.github.drain_transitions():
+            record_credential_mode_transition(
+                self.session,
+                analysis,
+                to_mode=transition.to_mode,
+                reason=transition.reason,
+                coverage_limitation=transition.coverage_limitation,
+            )
+        # A resumed run gets a fresh router, which re-probes the credential and
+        # may legitimately come back on a different mode than the one the
+        # previous attempt persisted. Reconcile so the stored mode always names
+        # the access actually in use rather than a stale earlier verdict.
+        if self.github.credential_mode != analysis.credential_mode:
+            record_credential_mode_transition(
+                self.session,
+                analysis,
+                to_mode=self.github.credential_mode,
+                reason="provider_access_revalidated_on_resume",
+                coverage_limitation=(
+                    None if self.github.credential_mode == "authenticated" else COVERAGE_LIMITATION
+                ),
+            )
+        quota = self.github.quota_snapshot
+        if quota:
+            analysis.quota_snapshot = quota
+
     def _stage(self, analysis: AnalysisRun, stage: str, progress: float) -> None:
         self._check_cancelled(analysis)
         analysis.stage = stage
         analysis.progress = progress
+        self._sync_access_provenance(analysis)
         checkpoint = self.session.scalar(
             select(StageCheckpoint).where(
                 StageCheckpoint.analysis_id == analysis.id, StageCheckpoint.stage == stage
@@ -590,6 +705,7 @@ class AnalysisPipeline:
         if checkpoint is not None:
             checkpoint.status = "completed"
             checkpoint.cursor = cursor
+        self._sync_access_provenance(analysis)
         emit_event(self.session, analysis, "stage.completed", stage=stage, payload=cursor)
         self.session.commit()
 
@@ -608,7 +724,7 @@ class AnalysisPipeline:
         if analysis.cancel_requested:
             raise AnalysisCancelled
         if analysis.started_at is not None:
-            elapsed = (datetime.now(UTC) - analysis.started_at).total_seconds()
+            elapsed = (datetime.now(UTC) - _as_utc(analysis.started_at)).total_seconds()
             if elapsed > self.settings.max_analysis_seconds:
                 raise PlatformError(
                     "analysis_deadline_exceeded",
@@ -619,7 +735,7 @@ class AnalysisPipeline:
     def _remaining_analysis_seconds(self, analysis: AnalysisRun) -> float:
         if analysis.started_at is None:
             return float(self.settings.max_analysis_seconds)
-        elapsed = (datetime.now(UTC) - analysis.started_at).total_seconds()
+        elapsed = (datetime.now(UTC) - _as_utc(analysis.started_at)).total_seconds()
         remaining = self.settings.max_analysis_seconds - elapsed
         if remaining <= 0:
             raise PlatformError(
@@ -687,29 +803,23 @@ class AnalysisPipeline:
         data: dict[str, Any],
         included: bool,
     ) -> None:
-        branch = self.session.scalar(
-            select(Branch).where(
-                Branch.analysis_id == analysis_id,
-                Branch.repository_id == repository.id,
-                Branch.name == data["name"],
-            )
-        )
-        if branch is None:
-            self.session.add(
-                Branch(
-                    analysis_id=analysis_id,
-                    repository_id=repository.id,
+        record_branch_plan(
+            self.session,
+            analysis_id,
+            repository.id,
+            [
+                BranchCandidate(
                     name=data["name"],
-                    head_sha=data["head_sha"],
                     is_default=True,
-                    included=included,
-                    selection_reason="default_branch",
-                    analysis_priority=100,
+                    priority=0,
+                    decision="selected" if included else "excluded",
+                    selection_reason="default_branch" if included else "default_branch_excluded",
+                    head_sha=data["head_sha"],
+                    retrieval_time=datetime.now(UTC),
                 )
-            )
-        else:
-            branch.head_sha = data["head_sha"]
-            branch.included = included
+            ],
+            planner_version=BRANCH_PLANNER_VERSION,
+        )
 
     def _root_repository(self, analysis: AnalysisRun) -> Repository:
         network = self.session.get(RepositoryNetwork, analysis.network_id)
