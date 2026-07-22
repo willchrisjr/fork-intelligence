@@ -77,10 +77,10 @@ class GitHubClient:
         return {"name": str(data.get("name") or branch), "head_sha": sha}
 
     def iter_forks(
-        self, owner: str, name: str, *, max_pages: int | None = None
+        self, owner: str, name: str, *, max_pages: int | None = None, start_page: int = 1
     ) -> Iterator[GitHubPage]:
         page_limit = max_pages or self.settings.max_github_pages
-        for page in range(1, page_limit + 1):
+        for page in range(start_page, page_limit + 1):
             response = self._request(
                 "GET",
                 f"/repos/{_path_segment(owner)}/{_path_segment(name)}/forks",
