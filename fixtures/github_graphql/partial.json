@@ -1,0 +1,35 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "cost": 1, "remaining": 4980, "nodeCount": 8 },
+    "repository": {
+      "databaseId": 1296269,
+      "name": "Hello-World",
+      "nameWithOwner": "octocat/Hello-World",
+      "url": "https://github.com/octocat/Hello-World",
+      "isFork": false,
+      "isArchived": false,
+      "isDisabled": false,
+      "createdAt": "2011-01-26T19:01:12Z",
+      "updatedAt": null,
+      "pushedAt": null,
+      "stargazerCount": 2500,
+      "forkCount": null,
+      "diskUsage": null,
+      "owner": { "login": "octocat" },
+      "defaultBranchRef": { "name": "main", "target": { "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } },
+      "primaryLanguage": null,
+      "licenseInfo": null,
+      "watchers": { "totalCount": 42 },
+      "issues": null,
+      "repositoryTopics": { "nodes": [] },
+      "refs": {
+        "totalCount": 1,
+        "nodes": [{ "name": "main", "target": { "oid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } }]
+      }
+    }
+  },
+  "errors": [
+    { "type": "FORBIDDEN", "message": "Resource not accessible: some fields were withheld by the provider" },
+    { "type": "RATE_LIMITED", "message": "API rate limit approaching for this resource" }
+  ]
+}

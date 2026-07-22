@@ -641,6 +641,23 @@ class AnalysisPipeline:
                 )
         self._finish_stage(analysis, "clustering", {"clusters": len(clusters)})
 
+    def _provider_provenance(self) -> dict[str, Any]:
+        """Provenance for a metadata snapshot, including per-field attribution.
+
+        Falls back to a plain REST record when the router predates field-level
+        provenance, so a snapshot always names its source.
+        """
+        provenance: dict[str, Any] = {
+            "source": "github_rest",
+            "api_version": self.settings.github_api_version,
+            "retrieved_at": datetime.now(UTC).isoformat(),
+            "credential_mode": self.github.credential_mode,
+        }
+        field_provenance = getattr(self.github, "last_repository_provenance", None)
+        if isinstance(field_provenance, dict) and field_provenance:
+            provenance |= field_provenance
+        return provenance
+
     def _sync_access_provenance(self, analysis: AnalysisRun) -> None:
         """Fold the router's access state into the analysis record.
 
@@ -785,11 +802,7 @@ class AnalysisPipeline:
                 repository_id=repository.id,
                 raw_metadata=data,
                 metrics=_metadata_metrics(data),
-                provenance={
-                    "source": "github_rest",
-                    "api_version": self.settings.github_api_version,
-                    "retrieved_at": datetime.now(UTC).isoformat(),
-                },
+                provenance=self._provider_provenance(),
             )
             self.session.add(snapshot)
         else:
