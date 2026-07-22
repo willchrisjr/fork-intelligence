@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -25,6 +26,9 @@ from sqlalchemy.types import JSON
 from fork_intelligence.db import Base
 
 JSON_VALUE = JSON().with_variant(JSONB(), "postgresql")
+
+CREDENTIAL_MODES = ("authenticated", "anonymous", "unavailable")
+BRANCH_DECISIONS = ("selected", "excluded", "unevaluated")
 
 
 def uuid_pk() -> Mapped[uuid.UUID]:
@@ -86,6 +90,12 @@ class Repository(TimestampMixin, Base):
 
 class AnalysisRun(TimestampMixin, Base):
     __tablename__ = "analysis_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "credential_mode in ('authenticated', 'anonymous', 'unavailable')",
+            name="ck_analysis_run_credential_mode",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = uuid_pk()
     requested_identifier: Mapped[str] = mapped_column(String(201), nullable=False)
@@ -106,6 +116,12 @@ class AnalysisRun(TimestampMixin, Base):
     configuration: Mapped[dict[str, Any]] = mapped_column(JSON_VALUE, default=dict, nullable=False)
     sampling: Mapped[dict[str, Any]] = mapped_column(JSON_VALUE, default=dict, nullable=False)
     quota_snapshot: Mapped[dict[str, Any]] = mapped_column(JSON_VALUE, default=dict, nullable=False)
+    credential_mode: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="authenticated"
+    )
+    credential_mode_transitions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON_VALUE, default=list, nullable=False
+    )
     warnings: Mapped[list[dict[str, Any]]] = mapped_column(JSON_VALUE, default=list, nullable=False)
     error: Mapped[dict[str, Any] | None] = mapped_column(JSON_VALUE)
     analysis_version: Mapped[str] = mapped_column(String(40), default="2026.07.1", nullable=False)
@@ -138,7 +154,30 @@ class Branch(Base):
     __tablename__ = "branches"
     __table_args__ = (
         UniqueConstraint(
-            "analysis_id", "repository_id", "name", name="uq_branch_analysis_repo_name"
+            "analysis_id",
+            "repository_id",
+            "planner_version",
+            "name",
+            name="uq_branch_analysis_repo_planner_name",
+        ),
+        UniqueConstraint(
+            "analysis_id",
+            "repository_id",
+            "planner_version",
+            "priority",
+            name="uq_branch_analysis_repo_planner_priority",
+        ),
+        CheckConstraint(
+            "decision in ('selected', 'excluded', 'unevaluated')",
+            name="ck_branch_decision",
+        ),
+        CheckConstraint(
+            "decision = 'unevaluated' or selection_reason is not null",
+            name="ck_branch_selection_reason_required",
+        ),
+        CheckConstraint(
+            "decision = 'unevaluated' or (head_sha is not null and retrieval_time is not null)",
+            name="ck_branch_observed_fields_required",
         ),
     )
 
@@ -147,14 +186,16 @@ class Branch(Base):
         Uuid(as_uuid=True), ForeignKey("analysis_runs.id", ondelete="CASCADE"), index=True
     )
     repository_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE")
+        Uuid(as_uuid=True), ForeignKey("repositories.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    head_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    head_sha: Mapped[str | None] = mapped_column(String(64))
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    included: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False, default="unevaluated")
     selection_reason: Mapped[str | None] = mapped_column(String(255))
-    analysis_priority: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    retrieval_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    planner_version: Mapped[str] = mapped_column(String(40), nullable=False)
 
 
 class EvidenceItem(TimestampMixin, Base):
