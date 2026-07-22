@@ -27,7 +27,7 @@ from fork_intelligence.db import Base
 
 JSON_VALUE = JSON().with_variant(JSONB(), "postgresql")
 
-CREDENTIAL_MODES = ("authenticated", "anonymous", "unavailable")
+CREDENTIAL_MODES = ("authenticated", "anonymous")
 BRANCH_DECISIONS = ("selected", "excluded", "unevaluated")
 
 
@@ -92,7 +92,7 @@ class AnalysisRun(TimestampMixin, Base):
     __tablename__ = "analysis_runs"
     __table_args__ = (
         CheckConstraint(
-            "credential_mode in ('authenticated', 'anonymous', 'unavailable')",
+            "credential_mode in ('authenticated', 'anonymous')",
             name="ck_analysis_run_credential_mode",
         ),
     )

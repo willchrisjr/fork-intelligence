@@ -8,7 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from fork_intelligence.db import Base
-from fork_intelligence.models import AnalysisRun, Branch, Repository
+from fork_intelligence.models import CREDENTIAL_MODES, AnalysisRun, Branch, Repository
 from fork_intelligence.services.persistence import (
     BranchCandidate,
     record_branch_plan,
@@ -255,3 +255,12 @@ def test_record_credential_mode_transition_rejects_unsupported_mode(
 ) -> None:
     with pytest.raises(ValueError, match="Unsupported credential mode"):
         record_credential_mode_transition(session, analysis, to_mode="ghost", reason="bad")
+
+
+def test_credential_mode_is_exactly_authenticated_or_anonymous() -> None:
+    """The blueprint defines two modes; a third would drift from that contract.
+
+    Availability is carried by analysis status, warnings, and the error record
+    rather than by overloading the field that names which credential was used.
+    """
+    assert CREDENTIAL_MODES == ("authenticated", "anonymous")

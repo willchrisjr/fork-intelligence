@@ -43,7 +43,7 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_analysis_run_credential_mode",
         "analysis_runs",
-        "credential_mode in ('authenticated', 'anonymous', 'unavailable')",
+        "credential_mode in ('authenticated', 'anonymous')",
     )
 
     # branches: add the new columns nullable first so existing rows can be
