@@ -168,6 +168,16 @@ class GitHubCredentialRouter:
     def get_branch(self, owner: str, name: str, branch: str) -> dict[str, Any]:
         return self._route(lambda client: client.get_branch(owner, name, branch))
 
+    def list_branches(
+        self, owner: str, name: str, *, max_branches: int | None = None
+    ) -> list[dict[str, str]]:
+        return self._route(
+            lambda client: client.list_branches(owner, name, max_branches=max_branches)
+        )
+
+    def compare_commits(self, owner: str, name: str, base: str, head: str) -> dict[str, Any]:
+        return self._route(lambda client: client.compare_commits(owner, name, base, head))
+
     def iter_forks(
         self, owner: str, name: str, *, max_pages: int | None = None
     ) -> Iterator[GitHubPage]:
