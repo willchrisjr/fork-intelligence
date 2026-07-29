@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { AnalysisShell } from "./analysis-shell";
 import { Confidence } from "./confidence";
+import { BranchPlanTable } from "@/components/branch-plan-table";
 import { api } from "@/lib/api";
 import {
   classificationLabel,
@@ -111,6 +112,9 @@ export function ForkDetailPage({
             />
           </div>
           <div className="detail-columns">
+            <section className="section-panel">
+              <BranchPlanTable entries={fork.branchPlan} />
+            </section>
             <section className="section-panel">
               <h2>Why this classification</h2>
               <ul className="reason-list">

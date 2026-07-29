@@ -2411,3 +2411,23 @@ a {
     overflow: auto;
   }
 }
+
+/* Provider-access and branch-coverage disclosures. Single column on narrow
+   viewports so the figures stay readable on a phone. */
+.disclosure-grid {
+  display: grid;
+  gap: 1rem;
+  margin-block: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 900px) {
+  .disclosure-grid:has(> section + section) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.disclosure-grid:empty {
+  display: none;
+  margin-block: 0;
+}

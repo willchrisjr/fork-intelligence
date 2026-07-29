@@ -14,6 +14,10 @@ import { useDeferredValue } from "react";
 import { AnalysisShell } from "./analysis-shell";
 import { EvidenceInspector } from "./evidence-inspector";
 import { ForkTable } from "./fork-table";
+import {
+  BranchPlanPanel,
+  ProviderAccessPanel,
+} from "@/components/access-disclosure";
 import { api, ApiError } from "@/lib/api";
 import { formatDateTime, formatNumber } from "@/lib/format";
 import { useProgressStream } from "@/lib/use-progress-stream";
@@ -146,6 +150,10 @@ export function AnalysisWorkspace({ analysisId }: { analysisId: string }) {
                 </span>
               </div>
             ) : null}
+            <div className="disclosure-grid">
+              <ProviderAccessPanel access={analysis.access} />
+              <BranchPlanPanel plan={analysis.branchPlan} />
+            </div>
             {progress.connection === "reconnecting" ||
             progress.connection === "error" ? (
               <div className="banner info" role="status">
