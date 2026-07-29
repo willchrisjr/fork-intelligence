@@ -4,7 +4,11 @@ import type {
   AnalysisStatus,
   AnalysisSummary,
   ApiErrorShape,
+  BranchDecision,
+  BranchPlanEntry,
+  BranchPlanSummary,
   Classification,
+  CredentialMode,
   Comparison,
   DevelopmentCluster,
   EvidenceItem,
@@ -13,6 +17,7 @@ import type {
   ForkPage,
   ForkSummary,
   MaintenanceState,
+  ProviderAccess,
   ScoreComponent,
 } from "./types";
 import type { components as ContractComponents } from "@fork-intelligence/contracts";
@@ -100,6 +105,9 @@ const number = (value: unknown, fallback = 0): number =>
 const nullableNumber = (value: unknown): number | null =>
   typeof value === "number" && Number.isFinite(value) ? value : null;
 const boolean = (value: unknown): boolean => value === true;
+/** Optional-number form, for fields typed `number | undefined`. */
+const optionalNumber = (value: unknown): number | undefined =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
 const canonicalClassifications = new Set<Classification>([
   "mirror",
@@ -170,6 +178,90 @@ function mapStages(stage: string, progress: number): AnalysisStage[] {
   }));
 }
 
+function mapProviderAccess(value: unknown): ProviderAccess | undefined {
+  const raw = record(value);
+  // Absent on analyses that predate provider-access disclosure. Returning
+  // undefined lets the UI omit the panel rather than render an empty one that
+  // would imply the analysis ran without a credential.
+  if (!raw.credential_mode) {
+    return undefined;
+  }
+  const quota = record(raw.quota);
+  const condition = record(raw.access_condition);
+  return {
+    credentialMode: string(raw.credential_mode, "anonymous") as CredentialMode,
+    quota: {
+      limit: optionalNumber(quota.limit),
+      remaining: optionalNumber(quota.remaining),
+      reset: optionalNumber(quota.reset),
+      resource: string(quota.resource) || undefined,
+    },
+    transitions: array(raw.transitions).map((item) => {
+      const transition = record(item);
+      return {
+        fromMode: string(transition.from_mode, "unknown"),
+        toMode: string(transition.to_mode, "unknown"),
+        reason: string(transition.reason, "unknown"),
+        coverageLimitation: string(transition.coverage_limitation) || undefined,
+        occurredAt: string(transition.occurred_at) || undefined,
+      };
+    }),
+    coverageLimitations: array(raw.coverage_limitations)
+      .map((item) => string(item))
+      .filter(Boolean),
+    accessCondition: raw.access_condition
+      ? {
+          code: string(condition.code, "unknown"),
+          message: string(condition.message) || undefined,
+          resumable: boolean(condition.resumable),
+        }
+      : undefined,
+  };
+}
+
+function mapBranchPlanSummary(value: unknown): BranchPlanSummary | undefined {
+  const raw = record(value);
+  if (!raw.counts) {
+    return undefined;
+  }
+  const counts = record(raw.counts);
+  const reasons = record(raw.selection_reasons);
+  return {
+    plannerVersion: string(raw.planner_version) || undefined,
+    effectiveCap: optionalNumber(raw.effective_cap),
+    counts: {
+      considered: number(counts.considered),
+      selected: number(counts.selected),
+      excludedByCap: number(counts.excluded_by_cap),
+      unevaluated: number(counts.unevaluated),
+      structurallyAnalyzed: number(counts.structurally_analyzed),
+    },
+    // Sorted by frequency so the dominant reason leads, with the reason name
+    // as a stable tie-break.
+    selectionReasons: Object.entries(reasons)
+      .map(([reason, count]) => ({ reason, count: number(count) }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
+    defaultOnlyCoverage: boolean(raw.structural_coverage_default_only),
+  };
+}
+
+function mapBranchPlanEntries(value: unknown): BranchPlanEntry[] {
+  return array(value).map((item) => {
+    const entry = record(item);
+    return {
+      repositoryId: string(entry.repository_id),
+      repositoryFullName: string(entry.repository_full_name) || undefined,
+      branchName: string(entry.branch_name, "unknown"),
+      headSha: string(entry.head_sha) || undefined,
+      isDefault: boolean(entry.is_default),
+      priority: number(entry.priority),
+      decision: string(entry.decision, "unevaluated") as BranchDecision,
+      selectionReason: string(entry.selection_reason) || undefined,
+      plannerVersion: string(entry.planner_version, "unknown"),
+    };
+  });
+}
+
 function mapAnalysis(
   value: ContractSchema<"AnalysisRead"> | unknown,
 ): AnalysisSummary {
@@ -226,6 +318,8 @@ function mapAnalysis(
       string(record(raw.configuration).analysis_commit) || undefined,
     stages: mapStages(string(raw.stage), progress),
     warnings,
+    access: mapProviderAccess(raw.access),
+    branchPlan: mapBranchPlanSummary(raw.branch_plan),
   };
 }
 
@@ -388,6 +482,7 @@ function mapForkDetail(value: unknown): ForkDetail {
           confidence: number(metrics.cluster_confidence),
         }
       : undefined,
+    branchPlan: mapBranchPlanEntries(raw.branch_plan),
   };
 }
 

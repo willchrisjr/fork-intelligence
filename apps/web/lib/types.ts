@@ -20,6 +20,71 @@ export interface AnalysisStage {
   detail?: string;
 }
 
+/** Which GitHub credential an analysis actually used. Never the credential. */
+export type CredentialMode = "authenticated" | "anonymous";
+
+export type BranchDecision = "selected" | "excluded" | "unevaluated";
+
+export interface ProviderQuota {
+  limit?: number;
+  remaining?: number;
+  reset?: number;
+  resource?: string;
+}
+
+export interface CredentialModeTransition {
+  fromMode: string;
+  toMode: string;
+  reason: string;
+  coverageLimitation?: string;
+  occurredAt?: string;
+}
+
+/** Provider access and capacity as it affected one analysis. */
+export interface ProviderAccess {
+  credentialMode: CredentialMode;
+  quota: ProviderQuota;
+  transitions: CredentialModeTransition[];
+  coverageLimitations: string[];
+  /** Present only when no access mode could continue; the run is resumable. */
+  accessCondition?: {
+    code: string;
+    message?: string;
+    resumable: boolean;
+  };
+}
+
+export interface BranchPlanCounts {
+  considered: number;
+  selected: number;
+  /** A sampling choice, kept distinct from `unevaluated` missing data. */
+  excludedByCap: number;
+  unevaluated: number;
+  structurallyAnalyzed: number;
+}
+
+export interface BranchPlanSummary {
+  plannerVersion?: string;
+  effectiveCap?: number;
+  counts: BranchPlanCounts;
+  selectionReasons: Array<{ reason: string; count: number }>;
+  /** True when structural coverage never went past the default branch. */
+  defaultOnlyCoverage: boolean;
+}
+
+export interface BranchPlanEntry {
+  repositoryId: string;
+  repositoryFullName?: string;
+  branchName: string;
+  headSha?: string;
+  isDefault: boolean;
+  /** Ordering within the plan; for a cap exclusion, its position. */
+  priority: number;
+  decision: BranchDecision;
+  selectionReason?: string;
+  plannerVersion: string;
+}
+
 export interface AnalysisSummary {
   id: string;
   repository: string;
@@ -40,6 +105,9 @@ export interface AnalysisSummary {
   analysisCommit?: string;
   stages: AnalysisStage[];
   warnings: string[];
+  /** Absent on analyses that predate provider-access disclosure. */
+  access?: ProviderAccess;
+  branchPlan?: BranchPlanSummary;
 }
 
 export type Classification =
@@ -133,6 +201,8 @@ export interface ForkDetail extends ForkSummary {
   classificationReasons: string[];
   evidence: EvidenceItem[];
   cluster?: { id: string; label: string; confidence: number };
+  /** Every branch candidate considered for this repository, in plan order. */
+  branchPlan: BranchPlanEntry[];
 }
 
 export interface ComparisonRepository {

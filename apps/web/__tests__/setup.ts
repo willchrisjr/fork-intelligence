@@ -1,4 +1,11 @@
 import "@testing-library/jest-dom/vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach } from "vitest";
+
+// Vitest runs with `globals: false`, so React Testing Library never
+// installs its automatic afterEach cleanup. Without this, renders leak
+// between tests in a file and queries match elements from earlier ones.
+afterEach(cleanup);
 
 class ResizeObserverStub {
   observe() {}

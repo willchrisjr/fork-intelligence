@@ -262,3 +262,93 @@ describe("API boundary mapping", () => {
     );
   });
 });
+
+function stubAnalysis(body: Record<string, unknown>): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    ),
+  );
+}
+
+describe("provider access and branch-plan mapping", () => {
+  it("maps access provenance from the contract shape", async () => {
+    stubAnalysis({
+      id: "a1",
+      requested_identifier: "root/project",
+      status: "completed",
+      access: {
+        credential_mode: "anonymous",
+        quota: { limit: 60, remaining: 15, resource: "core" },
+        transitions: [
+          {
+            from_mode: "authenticated",
+            to_mode: "anonymous",
+            reason: "operator_credential_quota_exhausted",
+            coverage_limitation: "Lower rate limit.",
+          },
+        ],
+        coverage_limitations: ["Lower rate limit."],
+        access_condition: null,
+      },
+    });
+
+    const analysis = await api.getAnalysis("a1");
+
+    expect(analysis.access?.credentialMode).toBe("anonymous");
+    expect(analysis.access?.quota.remaining).toBe(15);
+    expect(analysis.access?.transitions[0].reason).toBe(
+      "operator_credential_quota_exhausted",
+    );
+    expect(analysis.access?.coverageLimitations).toEqual(["Lower rate limit."]);
+  });
+
+  it("leaves access undefined when the analysis predates disclosure", async () => {
+    stubAnalysis({
+      id: "a1",
+      requested_identifier: "root/project",
+      status: "queued",
+    });
+
+    const analysis = await api.getAnalysis("a1");
+
+    expect(analysis.access).toBeUndefined();
+    expect(analysis.branchPlan).toBeUndefined();
+  });
+
+  it("maps branch-plan counts and orders reasons by frequency", async () => {
+    stubAnalysis({
+      id: "a1",
+      requested_identifier: "root/project",
+      status: "completed",
+      branch_plan: {
+        planner_version: "2026.07.2",
+        effective_cap: 3,
+        counts: {
+          considered: 6,
+          selected: 3,
+          excluded_by_cap: 2,
+          unevaluated: 1,
+          structurally_analyzed: 3,
+        },
+        selection_reasons: { default_branch: 1, branch_cap_exceeded: 2 },
+        structural_coverage_default_only: false,
+      },
+    });
+
+    const analysis = await api.getAnalysis("a1");
+
+    expect(analysis.branchPlan?.counts.excludedByCap).toBe(2);
+    expect(analysis.branchPlan?.counts.unevaluated).toBe(1);
+    expect(analysis.branchPlan?.effectiveCap).toBe(3);
+    // Dominant reason first, so the summary leads with what mattered most.
+    expect(analysis.branchPlan?.selectionReasons[0]).toEqual({
+      reason: "branch_cap_exceeded",
+      count: 2,
+    });
+  });
+});
