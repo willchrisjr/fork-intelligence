@@ -61,6 +61,14 @@ def test_csv_export_has_fixed_columns_and_neutralizes_spreadsheet_formulas() -> 
         "stars",
         "days_since_push",
         "unique_patches",
+        # Branch coverage is carried as columns, so the row grain stays one
+        # fork per row (WO-7).
+        "branches_considered",
+        "branches_selected",
+        "branches_excluded_by_cap",
+        "branches_unevaluated",
+        "selected_branches",
+        "branch_limitations",
     ]
     assert rows[0]["full_name"].startswith("'=")
 

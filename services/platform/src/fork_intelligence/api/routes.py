@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from fork_intelligence.api.deps import get_db_session
 from fork_intelligence.api.projections import (
+    project_branch_coverage_by_repository,
     project_branch_plan,
     project_provider_access,
     project_repository_branch_plan,
@@ -743,15 +744,12 @@ def export_analysis(
         rows = _fork_rows(session, analysis_id)
         upstream_rows = [row for row in rows if row[0].id == analysis.root_repository_id]
         fork_rows = [row for row in rows if row[0].id != analysis.root_repository_id]
+        coverage = project_branch_coverage_by_repository(session, analysis.id)
         payload = {
-            # Branch-plan coverage travels with the export so the application
-            # and its exports cannot disagree about analyzed scope
-            # (AC-RA-RBP-004.4). Access provenance is deliberately left out:
-            # that is the export work order's scope, and emitting it as null
-            # here would read as "no access data recorded".
-            "analysis": _analysis_read(session, analysis).model_dump(
-                mode="json", exclude={"access"}
-            ),
+            # The export carries the same access and branch-plan projections
+            # the application shows, so the two cannot disagree about analyzed
+            # scope or provider capacity (AC-RA-RBP-004.4, AC-AE-004.1).
+            "analysis": _analysis_read(session, analysis).model_dump(mode="json"),
             "generated_at": (
                 analysis.completed_at or analysis.updated_at or analysis.created_at
             ).isoformat(),
@@ -760,8 +758,8 @@ def export_analysis(
                 "analysis_version": analysis.analysis_version,
             },
             "configuration": analysis.configuration,
-            "upstream": _export_fork(*upstream_rows[0]) if upstream_rows else None,
-            "forks": [_export_fork(*row) for row in fork_rows],
+            "upstream": (_export_fork(*upstream_rows[0], coverage) if upstream_rows else None),
+            "forks": [_export_fork(*row, coverage) for row in fork_rows],
             "known_limitations": [
                 warning.get("message", warning.get("code")) for warning in analysis.warnings
             ],
@@ -988,7 +986,9 @@ def _export_fork(
     snapshot: RepositorySnapshot,
     classification: Classification | None,
     scores: list[ScoreSnapshot],
+    coverage: dict[uuid.UUID, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    branch = (coverage or {}).get(repository.id, {})
     return {
         "repository_id": str(repository.id),
         "full_name": f"{repository.owner}/{repository.name}",
@@ -1001,4 +1001,12 @@ def _export_fork(
         "metrics": snapshot.metrics,
         "scores": {score.dimension: score.value for score in scores},
         "provenance": snapshot.provenance,
+        # One fork per row: coverage is carried as counts plus joined lists so
+        # the CSV grain stays unchanged.
+        "branches_considered": branch.get("considered", 0),
+        "branches_selected": branch.get("selected", 0),
+        "branches_excluded_by_cap": branch.get("excluded_by_cap", 0),
+        "branches_unevaluated": branch.get("unevaluated", 0),
+        "selected_branches": "; ".join(branch.get("selected_branches", [])),
+        "branch_limitations": "; ".join(branch.get("limitations", [])),
     }

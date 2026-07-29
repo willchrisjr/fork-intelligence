@@ -137,6 +137,51 @@ def project_branch_plan(session: Session, analysis: AnalysisRun) -> BranchPlanRe
     )
 
 
+def project_branch_coverage_by_repository(
+    session: Session, analysis_id: uuid.UUID
+) -> dict[uuid.UUID, dict[str, Any]]:
+    """Per-repository branch coverage for every repository in one analysis.
+
+    Aggregated in a single grouped query rather than per repository, so an
+    exporter rendering one row per fork does not issue a query per row.
+    """
+    rows = session.execute(
+        select(Branch.repository_id, Branch.decision, Branch.name, Branch.selection_reason)
+        .where(Branch.analysis_id == analysis_id)
+        .order_by(Branch.repository_id, Branch.priority)
+    ).all()
+
+    coverage: dict[uuid.UUID, dict[str, Any]] = {}
+    for repository_id, decision, name, reason in rows:
+        entry = coverage.setdefault(
+            repository_id,
+            {
+                "considered": 0,
+                "selected": 0,
+                "excluded_by_cap": 0,
+                "unevaluated": 0,
+                "selected_branches": [],
+                "limitations": [],
+            },
+        )
+        entry["considered"] += 1
+        if decision == "selected":
+            entry["selected"] += 1
+            entry["selected_branches"].append(name)
+        elif decision == "excluded":
+            entry["excluded_by_cap"] += 1
+            if reason and reason not in entry["limitations"]:
+                entry["limitations"].append(reason)
+        elif decision == "unevaluated":
+            entry["unevaluated"] += 1
+            # A missing input is a different kind of gap from a cap exclusion,
+            # so it is labelled rather than folded in with one.
+            label = f"unevaluated:{reason}" if reason else "unevaluated"
+            if label not in entry["limitations"]:
+                entry["limitations"].append(label)
+    return coverage
+
+
 def project_repository_branch_plan(
     session: Session, analysis_id: uuid.UUID, repository_id: uuid.UUID
 ) -> list[BranchPlanEntryRead]:
