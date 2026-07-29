@@ -4,6 +4,10 @@ No benchmark result is claimed until a command, environment, fixture revision,
 sample count, and raw output are recorded here. Current status: benchmark targets
 and harness requirements defined; measurements pending implementation.
 
+Branch-coverage benchmarking on real fork networks is tracked separately in
+[BENCHMARKS.md](./BENCHMARKS.md), which records the methodology and one measured
+provider limit; those measurements are blocked on an operator credential.
+
 ## Service objectives for the MVP
 
 These are initial engineering targets, not validated production guarantees:
