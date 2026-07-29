@@ -230,3 +230,58 @@ def test_export_payload_shape_is_unchanged(
     analysis = response.json()["analysis"]
     assert "access" not in analysis
     assert "branch_plan" not in analysis
+
+
+def test_progress_events_carry_access_disclosure(
+    seeded: dict[str, uuid.UUID], session_factory: sessionmaker[Session]
+) -> None:
+    """WO-5 in-scope: progress payloads disclose credential mode and quota.
+
+    Asserted on the persisted row rather than the SSE endpoint, which is a
+    long-lived stream and would block a synchronous test client.
+    """
+    from fork_intelligence.models import ProgressEvent
+    from fork_intelligence.services.events import emit_event
+
+    with session_factory() as session:
+        analysis = session.get(AnalysisRun, seeded["analysis"])
+        assert analysis is not None
+        analysis.quota_snapshot = {**analysis.quota_snapshot, "authorization": f"Bearer {TOKEN}"}
+        event = emit_event(session, analysis, "stage.started", stage="census")
+        session.commit()
+        event_id = event.id
+
+    with session_factory() as session:
+        stored = session.get(ProgressEvent, event_id)
+        assert stored is not None
+        access = stored.payload["access"]
+        assert access["credential_mode"] == "anonymous"
+        assert access["quota"]["remaining"] == 3
+        assert access["fallback_count"] == 1
+        # The SSE contract forbids credential material on the stream.
+        assert TOKEN not in str(stored.payload)
+
+
+def test_emitted_event_records_the_mode_in_force_at_emit_time(
+    session_factory: sessionmaker[Session], seeded: dict[str, uuid.UUID]
+) -> None:
+    """Replay must not restate history with the run's current mode."""
+    from fork_intelligence.models import ProgressEvent
+    from fork_intelligence.services.events import emit_event
+
+    with session_factory() as session:
+        analysis = session.get(AnalysisRun, seeded["analysis"])
+        assert analysis is not None
+        analysis.credential_mode = "authenticated"
+        early = emit_event(session, analysis, "analysis.started")
+        analysis.credential_mode = "anonymous"
+        late = emit_event(session, analysis, "stage.started", stage="census")
+        session.commit()
+        early_id, late_id = early.id, late.id
+
+    with session_factory() as session:
+        first = session.get(ProgressEvent, early_id)
+        second = session.get(ProgressEvent, late_id)
+        assert first is not None and second is not None
+        assert first.payload["access"]["credential_mode"] == "authenticated"
+        assert second.payload["access"]["credential_mode"] == "anonymous"

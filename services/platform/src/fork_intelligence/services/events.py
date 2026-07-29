@@ -32,10 +32,29 @@ def emit_event(
         event_type=event_type,
         stage=stage or analysis.stage,
         progress=analysis.progress if progress is None else progress,
-        payload=payload or {},
+        payload={**(payload or {}), "access": _access_disclosure(analysis)},
     )
     session.add(event)
     return event
+
+
+def _access_disclosure(analysis: AnalysisRun) -> dict[str, Any]:
+    """Provider access as it stood when this event was emitted.
+
+    Stamped at emit time rather than resolved on replay: a reconnecting client
+    replays historical events, and enriching them with the run's *current* mode
+    would misreport when a fallback actually took effect. Bounded to the mode,
+    a sanitized quota, and a fallback count so the stream stays small and can
+    never carry credential material (Platform API SSE contract).
+    """
+    quota = analysis.quota_snapshot or {}
+    return {
+        "credential_mode": analysis.credential_mode,
+        "quota": {
+            key: quota[key] for key in ("limit", "remaining", "reset", "resource") if key in quota
+        },
+        "fallback_count": len(analysis.credential_mode_transitions or []),
+    }
 
 
 def require_analysis(session: Session, analysis_id: uuid.UUID) -> AnalysisRun:
