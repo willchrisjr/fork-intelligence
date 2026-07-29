@@ -74,9 +74,29 @@
       },
       "AnalysisRead": {
         "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderAccessRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "analysis_version": {
             "title": "Analysis Version",
             "type": "string"
+          },
+          "branch_plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BranchPlanRead"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "cancel_requested": {
             "title": "Cancel Requested",
@@ -236,6 +256,178 @@
           "completed_at"
         ],
         "title": "AnalysisRead",
+        "type": "object"
+      },
+      "BranchPlanCounts": {
+        "description": "Branch coverage counts (AC-RA-RBP-004.1/.2).\n\n``excluded_by_cap`` and ``unevaluated`` are kept apart on purpose: the first\nis a sampling choice, the second is missing data.",
+        "properties": {
+          "considered": {
+            "default": 0,
+            "title": "Considered",
+            "type": "integer"
+          },
+          "excluded_by_cap": {
+            "default": 0,
+            "title": "Excluded By Cap",
+            "type": "integer"
+          },
+          "selected": {
+            "default": 0,
+            "title": "Selected",
+            "type": "integer"
+          },
+          "structurally_analyzed": {
+            "default": 0,
+            "title": "Structurally Analyzed",
+            "type": "integer"
+          },
+          "unevaluated": {
+            "default": 0,
+            "title": "Unevaluated",
+            "type": "integer"
+          }
+        },
+        "title": "BranchPlanCounts",
+        "type": "object"
+      },
+      "BranchPlanEntryRead": {
+        "description": "One versioned branch-candidate decision.",
+        "properties": {
+          "branch_name": {
+            "title": "Branch Name",
+            "type": "string"
+          },
+          "decision": {
+            "enum": [
+              "selected",
+              "excluded",
+              "unevaluated"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "head_sha": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Head Sha"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "planner_version": {
+            "title": "Planner Version",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "integer"
+          },
+          "repository_full_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repository Full Name"
+          },
+          "repository_id": {
+            "format": "uuid",
+            "title": "Repository Id",
+            "type": "string"
+          },
+          "retrieval_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieval Time"
+          },
+          "selection_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Reason"
+          }
+        },
+        "required": [
+          "repository_id",
+          "branch_name",
+          "is_default",
+          "priority",
+          "decision",
+          "planner_version"
+        ],
+        "title": "BranchPlanEntryRead",
+        "type": "object"
+      },
+      "BranchPlanRead": {
+        "description": "Analysis-level branch-plan disclosure (AC-RA-RBP-002.4).\n\nDeliberately carries counts, caps, version, and a bounded reason summary\nrather than every entry: an analysis spans many repositories, and the\nper-candidate list belongs on the fork detail where it stays bounded.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/BranchPlanCounts"
+          },
+          "effective_cap": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Cap"
+          },
+          "planner_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Planner Version"
+          },
+          "selection_reasons": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Selection Reasons",
+            "type": "object"
+          },
+          "structural_coverage_default_only": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Structural Coverage Default Only"
+          }
+        },
+        "title": "BranchPlanRead",
         "type": "object"
       },
       "ClusterCollection": {
@@ -401,6 +593,52 @@
           "updated_at"
         ],
         "title": "ComparisonRead",
+        "type": "object"
+      },
+      "CredentialModeTransitionRead": {
+        "description": "One recorded change of effective credential mode.",
+        "properties": {
+          "coverage_limitation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coverage Limitation"
+          },
+          "from_mode": {
+            "title": "From Mode",
+            "type": "string"
+          },
+          "occurred_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occurred At"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "to_mode": {
+            "title": "To Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_mode",
+          "to_mode",
+          "reason"
+        ],
+        "title": "CredentialModeTransitionRead",
         "type": "object"
       },
       "EvolutionRead": {
@@ -595,11 +833,135 @@
         "title": "ProblemDetails",
         "type": "object"
       },
+      "ProviderAccessRead": {
+        "description": "How provider access affected an analysis (AC-RA-AGA-001.2, 002.3, 003.1-.3).\n\nCarries the effective mode and capacity only; the operator credential itself\nhas no representation here and none of these fields is derived from it.",
+        "properties": {
+          "access_condition": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Condition"
+          },
+          "coverage_limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Coverage Limitations",
+            "type": "array"
+          },
+          "credential_mode": {
+            "title": "Credential Mode",
+            "type": "string"
+          },
+          "quota": {
+            "$ref": "#/components/schemas/ProviderQuotaRead"
+          },
+          "transitions": {
+            "items": {
+              "$ref": "#/components/schemas/CredentialModeTransitionRead"
+            },
+            "title": "Transitions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "credential_mode",
+          "quota"
+        ],
+        "title": "ProviderAccessRead",
+        "type": "object"
+      },
+      "ProviderQuotaRead": {
+        "description": "Sanitized provider capacity. Only these fields ever cross the boundary.",
+        "properties": {
+          "credential_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Mode"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
+          "node_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Count"
+          },
+          "remaining": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining"
+          },
+          "reset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset"
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resource"
+          }
+        },
+        "title": "ProviderQuotaRead",
+        "type": "object"
+      },
       "RepositoryRead": {
         "properties": {
           "archived": {
             "title": "Archived",
             "type": "boolean"
+          },
+          "branch_plan": {
+            "items": {
+              "$ref": "#/components/schemas/BranchPlanEntryRead"
+            },
+            "title": "Branch Plan",
+            "type": "array"
           },
           "classification": {
             "anyOf": [
