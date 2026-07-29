@@ -744,11 +744,13 @@ def export_analysis(
         upstream_rows = [row for row in rows if row[0].id == analysis.root_repository_id]
         fork_rows = [row for row in rows if row[0].id != analysis.root_repository_id]
         payload = {
-            # Export format changes belong to the export work order. Excluding
-            # the new projections keeps this payload byte-identical rather than
-            # shipping nulls that would read as "no access data recorded".
-            "analysis": AnalysisRead.model_validate(analysis).model_dump(
-                mode="json", exclude={"access", "branch_plan"}
+            # Branch-plan coverage travels with the export so the application
+            # and its exports cannot disagree about analyzed scope
+            # (AC-RA-RBP-004.4). Access provenance is deliberately left out:
+            # that is the export work order's scope, and emitting it as null
+            # here would read as "no access data recorded".
+            "analysis": _analysis_read(session, analysis).model_dump(
+                mode="json", exclude={"access"}
             ),
             "generated_at": (
                 analysis.completed_at or analysis.updated_at or analysis.created_at

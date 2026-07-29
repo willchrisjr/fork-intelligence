@@ -220,16 +220,19 @@ def test_no_endpoint_leaks_credential_material(
         assert TOKEN not in body
 
 
-def test_export_payload_shape_is_unchanged(
+def test_export_preserves_the_same_branch_coverage_as_the_analysis(
     client: TestClient, seeded: dict[str, uuid.UUID]
 ) -> None:
-    """Export format is a separate work order; this one must not alter it."""
-    response = client.get(f"/api/v1/analyses/{seeded['analysis']}/exports/json")
+    """AC-RA-RBP-004.4: the app and its exports must agree about analyzed scope."""
+    analysis_body = client.get(f"/api/v1/analyses/{seeded['analysis']}").json()
+    export_body = client.get(f"/api/v1/analyses/{seeded['analysis']}/exports/json").json()
 
-    assert response.status_code == 200
-    analysis = response.json()["analysis"]
-    assert "access" not in analysis
-    assert "branch_plan" not in analysis
+    exported = export_body["analysis"]
+    assert exported["branch_plan"] == analysis_body["branch_plan"]
+    assert exported["branch_plan"]["counts"]["excluded_by_cap"] == 1
+    assert exported["branch_plan"]["effective_cap"] == 2
+    # Access provenance in exports belongs to the export work order.
+    assert "access" not in exported
 
 
 def test_progress_events_carry_access_disclosure(
