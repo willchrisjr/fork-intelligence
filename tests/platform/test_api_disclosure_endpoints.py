@@ -214,6 +214,9 @@ def test_no_endpoint_leaks_credential_material(
         client.get(f"/api/v1/analyses/{seeded['analysis']}").text,
         client.get(f"/api/v1/analyses/{seeded['analysis']}/overview").text,
         client.get(f"/api/v1/analyses/{seeded['analysis']}/forks/{seeded['fork']}").text,
+        client.get(f"/api/v1/analyses/{seeded['analysis']}/exports/json").text,
+        client.get(f"/api/v1/analyses/{seeded['analysis']}/exports/markdown").text,
+        client.get(f"/api/v1/analyses/{seeded['analysis']}/exports/csv").text,
     ]
 
     for body in bodies:
@@ -231,8 +234,8 @@ def test_export_preserves_the_same_branch_coverage_as_the_analysis(
     assert exported["branch_plan"] == analysis_body["branch_plan"]
     assert exported["branch_plan"]["counts"]["excluded_by_cap"] == 1
     assert exported["branch_plan"]["effective_cap"] == 2
-    # Access provenance in exports belongs to the export work order.
-    assert "access" not in exported
+    # Access provenance now travels with exports too (WO-7).
+    assert exported["access"] == analysis_body["access"]
 
 
 def test_progress_events_carry_access_disclosure(
