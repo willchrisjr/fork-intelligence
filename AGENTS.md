@@ -13,6 +13,9 @@
 - Setup: `pnpm install && uv sync --directory services/platform --all-groups`
 - Develop: `pnpm dev`
 - Test: `pnpm test`
+- Browser test: `pnpm --filter @fork-intelligence/web test:e2e` — always via this
+  script. It targets `e2e/playwright.config.ts` and runs against a production
+  build; a bare `playwright test` does not and will not work.
 - Lint: `pnpm lint`
 - Type check: `pnpm typecheck`
 - Build: `pnpm build`
