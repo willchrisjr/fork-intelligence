@@ -15,7 +15,7 @@ from fork_intelligence.adapters.credential_router import (
 from fork_intelligence.adapters.github import GitHubClient, GitHubPage
 from fork_intelligence.config import Settings
 from fork_intelligence.db import Base
-from fork_intelligence.errors import GitHubError
+from fork_intelligence.errors import GitHubError, PlatformError
 from fork_intelligence.models import (
     AnalysisRun,
     ProgressEvent,
@@ -306,40 +306,78 @@ def _shortlisted_fork(session: Session, analysis: AnalysisRun) -> Repository:
     return fork
 
 
+def _select_fork_default(session: Session, analysis: AnalysisRun, fork: Repository) -> None:
+    """Persist a selected default-branch plan entry so structural has a head to fetch.
+
+    The structural stage now consumes the branch plan produced by
+    _plan_branches rather than resolving fork branches itself, so a plan entry
+    must exist for the fork to be analyzed.
+    """
+    from datetime import UTC, datetime
+
+    from fork_intelligence.domain.branch_planning import BRANCH_PLANNER_VERSION
+    from fork_intelligence.services.persistence import BranchCandidate, record_branch_plan
+
+    record_branch_plan(
+        session,
+        analysis.id,
+        fork.id,
+        [
+            BranchCandidate(
+                name="main",
+                is_default=True,
+                priority=0,
+                decision="selected",
+                selection_reason="default_branch",
+                head_sha="f" * 40,
+                retrieval_time=datetime.now(UTC),
+            )
+        ],
+        planner_version=BRANCH_PLANNER_VERSION,
+    )
+    session.commit()
+
+
+class _FailingStore(_StubStore):
+    """A git store that fails when fetching a selected fork branch."""
+
+    error: PlatformError
+
+    def fetch_branch(self, *args: object, **kwargs: object) -> str:
+        # Root fetch (positional owner "root") succeeds so the base ref exists.
+        if "root" in args:
+            return "root-ref"
+        raise self.error
+
+
 def _structural_pipeline(
     session: Session,
     analysis: AnalysisRun,
     monkeypatch: pytest.MonkeyPatch,
     router: FakeRouter,
-) -> AnalysisPipeline:
-    monkeypatch.setattr("fork_intelligence.services.pipeline.BareNetworkStore", _StubStore)
+    store_cls: type[_StubStore] = _StubStore,
+) -> tuple[AnalysisPipeline, Repository]:
+    monkeypatch.setattr("fork_intelligence.services.pipeline.BareNetworkStore", store_cls)
     pipeline = _pipeline(session, router)
     pipeline._resolve(analysis)
     session.commit()
-    _shortlisted_fork(session, analysis)
-    return pipeline
-
-
-class _FailingForkBranch(FakeRouter):
-    """Succeeds for the root repository, fails for every fork."""
-
-    error: GitHubError
-
-    def get_branch(self, owner: str, name: str, branch: str) -> dict[str, Any]:
-        if owner == "root":
-            return {"name": branch, "head_sha": "a" * 40}
-        raise self.error
+    fork = _shortlisted_fork(session, analysis)
+    _select_fork_default(session, analysis, fork)
+    return pipeline, fork
 
 
 def test_provider_exhaustion_during_structural_analysis_is_not_swallowed(
     session: Session, analysis: AnalysisRun, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A provider-wide outage must not be filed as a per-repository warning."""
-    router = _FailingForkBranch(mode="anonymous")
-    router.error = GitHubError(
-        "github_rate_limited", "quota exhausted", status_code=503, details={"quota": QUOTA}
-    )
-    pipeline = _structural_pipeline(session, analysis, monkeypatch, router)
+    """A provider-wide outage at the base fetch must propagate, not be swallowed."""
+
+    class _RateLimitedRoot(FakeRouter):
+        def get_branch(self, owner: str, name: str, branch: str) -> dict[str, Any]:
+            raise GitHubError(
+                "github_rate_limited", "quota exhausted", status_code=503, details={"quota": QUOTA}
+            )
+
+    pipeline, _ = _structural_pipeline(session, analysis, monkeypatch, _RateLimitedRoot())
 
     with pytest.raises(GitHubError) as caught:
         pipeline._structural(analysis)
@@ -354,16 +392,17 @@ def test_provider_exhaustion_during_structural_analysis_is_not_swallowed(
 def test_repository_specific_failures_remain_per_repository_warnings(
     session: Session, analysis: AnalysisRun, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    router = _FailingForkBranch()
-    router.error = GitHubError("repository_not_found", "gone", status_code=404)
-    pipeline = _structural_pipeline(session, analysis, monkeypatch, router)
+    _FailingStore.error = PlatformError("git_head_changed", "moved", status_code=409)
+    pipeline, _ = _structural_pipeline(
+        session, analysis, monkeypatch, FakeRouter(), store_cls=_FailingStore
+    )
 
     # Does not raise: one unavailable repository is survivable.
     pipeline._structural(analysis)
 
     stored = session.get(AnalysisRun, analysis.id)
     assert stored is not None
-    assert any(warning.get("code") == "repository_not_found" for warning in stored.warnings)
+    assert any(warning.get("code") == "git_head_changed" for warning in stored.warnings)
 
 
 def test_operator_credential_never_reaches_persisted_state(

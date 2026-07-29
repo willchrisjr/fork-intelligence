@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     max_shortlist: int = Field(default=12, ge=1, le=25)
     max_deep_repositories: int = Field(default=12, ge=1, le=25)
     max_branches_per_fork: int = Field(default=3, ge=1, le=25)
+    max_branch_candidates: int = Field(default=50, ge=1, le=100)
+    max_branch_probes: int = Field(default=10, ge=1, le=50)
     max_analysis_seconds: int = Field(default=2700, ge=60, le=2700)
     max_blob_bytes: int = Field(default=2_000_000, ge=1024, le=50_000_000)
     max_git_store_bytes: int = Field(default=5_000_000_000, ge=1_000_000, le=100_000_000_000)

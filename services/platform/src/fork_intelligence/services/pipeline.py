@@ -14,6 +14,12 @@ from fork_intelligence.adapters.credential_router import (
 )
 from fork_intelligence.adapters.git import BareNetworkStore
 from fork_intelligence.config import Settings, get_settings
+from fork_intelligence.domain.branch_planning import (
+    BRANCH_PLANNER_VERSION,
+    BranchPlan,
+    BranchSignal,
+    plan_branches,
+)
 from fork_intelligence.domain.classification import classify_repository
 from fork_intelligence.domain.clustering import build_vector, cluster_vectors
 from fork_intelligence.domain.repository_input import parse_repository_identifier
@@ -21,6 +27,7 @@ from fork_intelligence.domain.scoring import calculate_scores
 from fork_intelligence.errors import GitHubError, PlatformError
 from fork_intelligence.models import (
     AnalysisRun,
+    Branch,
     Classification,
     ClusterMember,
     DevelopmentCluster,
@@ -37,8 +44,6 @@ from fork_intelligence.services.persistence import (
     record_branch_plan,
     record_credential_mode_transition,
 )
-
-BRANCH_PLANNER_VERSION = "2026.07.1"
 
 # Provider conditions that leave committed evidence intact and the run
 # resumable, rather than failing it. Both mean the router ran out of usable
@@ -88,6 +93,7 @@ class AnalysisPipeline:
             self._census(analysis)
             self._shortlist(analysis)
             if analysis.configuration.get("analysis_depth", "structural") != "metadata":
+                self._plan_branches(analysis)
                 self._structural(analysis)
             self._score_and_classify(analysis)
             self._cluster(analysis)
@@ -409,7 +415,6 @@ class AnalysisPipeline:
             root.default_branch,
             root_branch["head_sha"],
         )
-        self._upsert_branch(analysis.id, root, root_branch, True)
         snapshots = self.session.scalars(
             select(RepositorySnapshot)
             .where(
@@ -420,82 +425,46 @@ class AnalysisPipeline:
             .limit(self.settings.max_deep_repositories)
         ).all()
         completed = 0
+        branches_analyzed = 0
+        non_default_analyzed = 0
         for snapshot in snapshots:
             self._check_cancelled(analysis)
             repository = self.session.get(Repository, snapshot.repository_id)
             if repository is None or repository.disabled:
                 continue
+            # Analyze only the exact heads the plan selected, never a ref
+            # discovered implicitly at fetch time (Repository Evidence
+            # Acquisition: selection provenance stays explicit).
+            selected = self._selected_branches(analysis.id, repository.id)
+            if not selected:
+                continue
             try:
-                branch = self.github.get_branch(
-                    repository.owner, repository.name, repository.default_branch
-                )
-                fork_ref = store.fetch_branch(
-                    str(analysis.id),
-                    repository.github_id,
-                    repository.owner,
-                    repository.name,
-                    repository.default_branch,
-                    branch["head_sha"],
-                )
-                self._upsert_branch(analysis.id, repository, branch, True)
-                comparison = store.compare(
-                    root_ref,
-                    fork_ref,
-                    timeout=self._remaining_analysis_seconds(analysis),
-                )
-                changed_paths = [item["path"] for item in comparison.changed_files]
-                snapshot.depth = "structural"
-                snapshot.metrics = {
-                    **snapshot.metrics,
-                    "ahead": comparison.ahead,
-                    "behind": comparison.behind,
-                    "shared_commits": comparison.shared_commits,
-                    "merge_base": comparison.merge_base,
-                    "unique_commits": len(comparison.unique_commits),
-                    "unique_patches": len(set(comparison.patch_ids.values())),
-                    "patch_fingerprints": sorted(set(comparison.patch_ids.values())),
-                    "aggregate_patch_id": comparison.patch_overlap.get("fork_aggregate_patch_id"),
-                    "files_changed": len(comparison.changed_files),
-                    "directories_changed": len(comparison.directory_summary),
-                    "source_files_changed": comparison.file_composition["application_source"],
-                    "test_files_changed": comparison.file_composition["tests"],
-                    "file_composition": comparison.file_composition,
-                    "directory_summary": comparison.directory_summary,
-                    "changed_paths": changed_paths,
-                    "conflict_estimate": comparison.conflict_estimate["value"],
-                    "patch_coverage": {
-                        "available": len(comparison.patch_ids),
-                        "missing_blobs": len(comparison.missing_blob_commits),
-                    },
-                }
-                evidence = EvidenceItem(
-                    analysis_id=analysis.id,
-                    repository_id=repository.id,
-                    evidence_type="calculated_metric",
-                    source="git",
-                    source_url=f"{repository.html_url}/compare/{comparison.merge_base}...{branch['head_sha']}",
-                    payload={
-                        "merge_base": comparison.merge_base,
-                        "ahead": comparison.ahead,
-                        "behind": comparison.behind,
-                        "unique_commits": comparison.unique_commits,
-                        "patch_ids": comparison.patch_ids,
-                        "patch_overlap": comparison.patch_overlap,
-                        "missing_blob_commits": comparison.missing_blob_commits,
-                        "changed_files": comparison.changed_files,
-                        "conflict_estimate": comparison.conflict_estimate,
-                    },
-                    provenance={"method": "native-git", "version": "git-analysis-2026.07.1"},
-                )
-                self.session.add(evidence)
-                completed += 1
-                emit_event(
-                    self.session,
-                    analysis,
-                    "structural.repository_persisted",
-                    payload={"repository_id": str(repository.id), "completed": completed},
-                )
-                self.session.commit()
+                repository_branches = 0
+                for branch_entry in selected:
+                    headline = branch_entry.is_default or repository_branches == 0
+                    comparison = self._analyze_selected_branch(
+                        analysis, store, root_ref, repository, snapshot, branch_entry, headline
+                    )
+                    if comparison is None:
+                        continue
+                    repository_branches += 1
+                    branches_analyzed += 1
+                    if not branch_entry.is_default:
+                        non_default_analyzed += 1
+                    self.session.commit()
+                if repository_branches:
+                    completed += 1
+                    emit_event(
+                        self.session,
+                        analysis,
+                        "structural.repository_persisted",
+                        payload={
+                            "repository_id": str(repository.id),
+                            "completed": completed,
+                            "branches_analyzed": repository_branches,
+                        },
+                    )
+                    self.session.commit()
             except PlatformError as exc:
                 # Provider exhaustion is not specific to this repository -- it
                 # will block every remaining one too. Let it reach the run-level
@@ -518,8 +487,99 @@ class AnalysisPipeline:
             "deep_repository_cap": self.settings.max_deep_repositories,
             "deep_repositories_selected": len(snapshots),
             "deep_repositories_analyzed": completed,
+            # AC-RA-RBP-004.1: branch-level coverage, distinct from repo counts.
+            "branches_structurally_analyzed": branches_analyzed,
+            # AC-RA-RBP-004.3: make it explicit when coverage never left the
+            # default branch, so a reader does not assume broader coverage.
+            "structural_coverage_default_only": non_default_analyzed == 0,
         }
-        self._finish_stage(analysis, "structural", {"repositories_analyzed": completed})
+        self._finish_stage(
+            analysis,
+            "structural",
+            {"repositories_analyzed": completed, "branches_analyzed": branches_analyzed},
+        )
+
+    def _analyze_selected_branch(
+        self,
+        analysis: AnalysisRun,
+        store: BareNetworkStore,
+        root_ref: str,
+        repository: Repository,
+        snapshot: RepositorySnapshot,
+        branch_entry: Branch,
+        headline: bool,
+    ) -> object | None:
+        """Fetch one selected head and compare it against the root default.
+
+        The headline branch drives the repository's snapshot metrics, preserving
+        the scoring inputs the rest of the pipeline expects. Additional selected
+        branches contribute their own evidence item and branch-coverage count
+        without disturbing those inputs.
+        """
+        if not branch_entry.head_sha:
+            return None
+        fork_ref = store.fetch_branch(
+            str(analysis.id),
+            repository.github_id,
+            repository.owner,
+            repository.name,
+            branch_entry.name,
+            branch_entry.head_sha,
+        )
+        comparison = store.compare(
+            root_ref, fork_ref, timeout=self._remaining_analysis_seconds(analysis)
+        )
+        changed_paths = [item["path"] for item in comparison.changed_files]
+        if headline:
+            snapshot.depth = "structural"
+            snapshot.metrics = {
+                **snapshot.metrics,
+                "ahead": comparison.ahead,
+                "behind": comparison.behind,
+                "shared_commits": comparison.shared_commits,
+                "merge_base": comparison.merge_base,
+                "unique_commits": len(comparison.unique_commits),
+                "unique_patches": len(set(comparison.patch_ids.values())),
+                "patch_fingerprints": sorted(set(comparison.patch_ids.values())),
+                "aggregate_patch_id": comparison.patch_overlap.get("fork_aggregate_patch_id"),
+                "files_changed": len(comparison.changed_files),
+                "directories_changed": len(comparison.directory_summary),
+                "source_files_changed": comparison.file_composition["application_source"],
+                "test_files_changed": comparison.file_composition["tests"],
+                "file_composition": comparison.file_composition,
+                "directory_summary": comparison.directory_summary,
+                "changed_paths": changed_paths,
+                "conflict_estimate": comparison.conflict_estimate["value"],
+                "patch_coverage": {
+                    "available": len(comparison.patch_ids),
+                    "missing_blobs": len(comparison.missing_blob_commits),
+                },
+            }
+        evidence = EvidenceItem(
+            analysis_id=analysis.id,
+            repository_id=repository.id,
+            evidence_type="calculated_metric",
+            source="git",
+            source_url=(
+                f"{repository.html_url}/compare/{comparison.merge_base}...{branch_entry.head_sha}"
+            ),
+            payload={
+                "branch": branch_entry.name,
+                "is_default": branch_entry.is_default,
+                "merge_base": comparison.merge_base,
+                "ahead": comparison.ahead,
+                "behind": comparison.behind,
+                "unique_commits": comparison.unique_commits,
+                "patch_ids": comparison.patch_ids,
+                "patch_overlap": comparison.patch_overlap,
+                "missing_blob_commits": comparison.missing_blob_commits,
+                "changed_files": comparison.changed_files,
+                "conflict_estimate": comparison.conflict_estimate,
+            },
+            provenance={"method": "native-git", "version": "git-analysis-2026.07.1"},
+        )
+        self.session.add(evidence)
+        return comparison
 
     def _score_and_classify(self, analysis: AnalysisRun) -> None:
         if self._stage_complete(analysis, "scoring"):
@@ -838,29 +898,208 @@ class AnalysisPipeline:
             snapshot.provenance = provenance or self._provider_provenance()
         return snapshot
 
-    def _upsert_branch(
+    def _record_branch_plan(
         self,
         analysis_id: uuid.UUID,
         repository: Repository,
-        data: dict[str, Any],
-        included: bool,
+        plan: BranchPlan,
+        retrieval_time: datetime,
     ) -> None:
+        """Persist every considered candidate through the WO-1 recorder.
+
+        The recorder and schema are reused unchanged: this stage only decides,
+        it does not own persistence. All decisions -- selected, excluded, and
+        unevaluated -- are written so the plan is fully inspectable.
+        """
         record_branch_plan(
             self.session,
             analysis_id,
             repository.id,
             [
                 BranchCandidate(
-                    name=data["name"],
-                    is_default=True,
-                    priority=0,
-                    decision="selected" if included else "excluded",
-                    selection_reason="default_branch" if included else "default_branch_excluded",
-                    head_sha=data["head_sha"],
-                    retrieval_time=datetime.now(UTC),
+                    name=entry.name,
+                    is_default=entry.is_default,
+                    priority=entry.priority,
+                    decision=entry.decision,
+                    selection_reason=entry.selection_reason,
+                    # Observed fields are required for a decided candidate; an
+                    # unevaluated one still carries the head we enumerated.
+                    head_sha=entry.head_sha or None,
+                    retrieval_time=retrieval_time if entry.decision != "unevaluated" else None,
                 )
+                for entry in plan.entries
             ],
             planner_version=BRANCH_PLANNER_VERSION,
+        )
+
+    def _plan_branches(self, analysis: AnalysisRun) -> None:
+        """Deterministically plan branches for the root and shortlisted forks.
+
+        Enumerates candidates, establishes ranking signals through a bounded
+        per-repository probe, and delegates the decision to the pure planner.
+        Candidates past the probe budget are left unevaluated with the missing
+        input named rather than guessed at (AC-RA-RBP-002.3).
+        """
+        if self._stage_complete(analysis, "branch_planning"):
+            return
+        self._stage(analysis, "branch_planning", 0.40)
+        cap = self.settings.max_branches_per_fork
+        totals = {"considered": 0, "selected": 0, "excluded": 0, "unevaluated": 0}
+
+        for repository in self._planned_repositories(analysis):
+            self._check_cancelled(analysis)
+            retrieval_time = datetime.now(UTC)
+            signals = self._branch_signals(repository)
+            plan = plan_branches(signals, cap=cap)
+            self._record_branch_plan(analysis.id, repository, plan, retrieval_time)
+            totals["considered"] += plan.considered
+            totals["selected"] += plan.selected
+            totals["excluded"] += plan.excluded
+            totals["unevaluated"] += plan.unevaluated
+            emit_event(
+                self.session,
+                analysis,
+                "branch_planning.repository_planned",
+                payload={
+                    "repository_id": str(repository.id),
+                    "selected": plan.selected,
+                    "excluded": plan.excluded,
+                    "unevaluated": plan.unevaluated,
+                },
+            )
+            self.session.commit()
+
+        analysis.sampling = {
+            **analysis.sampling,
+            "branch_cap": cap,
+            "branch_planner_version": BRANCH_PLANNER_VERSION,
+            "branches_considered": totals["considered"],
+            "branches_selected": totals["selected"],
+            # AC-RA-RBP-004.2: cap exclusions and unevaluable candidates are
+            # reported separately so sampling choices are never confused with
+            # provider or repository failures.
+            "branches_excluded_by_cap": totals["excluded"],
+            "branches_unevaluated": totals["unevaluated"],
+        }
+        self._finish_stage(analysis, "branch_planning", totals)
+
+    def _planned_repositories(self, analysis: AnalysisRun) -> list[Repository]:
+        """The root plus shortlisted forks, the repositories structural fetch covers."""
+        root = self._root_repository(analysis)
+        forks = self.session.scalars(
+            select(Repository)
+            .join(RepositorySnapshot, RepositorySnapshot.repository_id == Repository.id)
+            .where(
+                RepositorySnapshot.analysis_id == analysis.id,
+                RepositorySnapshot.shortlisted.is_(True),
+                RepositorySnapshot.repository_id != root.id,
+                Repository.disabled.is_(False),
+            )
+            .order_by(Repository.github_id, Repository.id)
+            .limit(self.settings.max_deep_repositories)
+        ).all()
+        return [root, *forks]
+
+    def _branch_signals(self, repository: Repository) -> list[BranchSignal]:
+        """Enumerate branch candidates and probe ranking signals within budget."""
+        try:
+            branches = self.github.list_branches(
+                repository.owner,
+                repository.name,
+                max_branches=self.settings.max_branch_candidates,
+            )
+        except GitHubError as exc:
+            if exc.code in PROVIDER_EXHAUSTED_CODES:
+                raise
+            # Enumeration failed for a repository-specific reason. The default
+            # branch is still known from metadata, so plan it alone rather than
+            # abandoning the repository (AC-RA-RBP-001.5).
+            branches = []
+
+        default_name = repository.default_branch
+        signals: list[BranchSignal] = []
+        seen_default = False
+        probes_remaining = self.settings.max_branch_probes
+
+        for branch in branches:
+            is_default = branch["name"] == default_name
+            if is_default:
+                seen_default = True
+                signals.append(
+                    BranchSignal(
+                        name=branch["name"],
+                        head_sha=branch["head_sha"],
+                        is_default=True,
+                    )
+                )
+                continue
+            if probes_remaining > 0:
+                probes_remaining -= 1
+                signals.append(self._probe_branch(repository, default_name, branch))
+            else:
+                signals.append(
+                    BranchSignal(
+                        name=branch["name"],
+                        head_sha=branch["head_sha"],
+                        is_default=False,
+                        missing_input="probe_budget_exhausted",
+                    )
+                )
+
+        if not seen_default:
+            # Guarantee the default is always a candidate even when enumeration
+            # was empty or omitted it, so AC-RA-RBP-001.2 always holds. Its head
+            # is resolved directly when the listing did not include it.
+            try:
+                default = self.github.get_branch(repository.owner, repository.name, default_name)
+            except GitHubError as exc:
+                if exc.code in PROVIDER_EXHAUSTED_CODES:
+                    raise
+                default = None
+            if default and default.get("head_sha"):
+                signals.append(
+                    BranchSignal(name=default_name, head_sha=default["head_sha"], is_default=True)
+                )
+        return signals
+
+    def _probe_branch(
+        self, repository: Repository, default_name: str, branch: dict[str, str]
+    ) -> BranchSignal:
+        """Establish ahead and activity signals for one candidate, or mark it unevaluable."""
+        try:
+            comparison = self.github.compare_commits(
+                repository.owner, repository.name, default_name, branch["name"]
+            )
+        except GitHubError as exc:
+            if exc.code in PROVIDER_EXHAUSTED_CODES:
+                raise
+            return BranchSignal(
+                name=branch["name"],
+                head_sha=branch["head_sha"],
+                is_default=False,
+                missing_input="relationship_probe_failed",
+            )
+        return BranchSignal(
+            name=branch["name"],
+            head_sha=branch["head_sha"],
+            is_default=False,
+            last_activity=_parse_activity(comparison.get("last_activity")),
+            ahead=int(comparison.get("ahead") or 0),
+        )
+
+    def _selected_branches(self, analysis_id: uuid.UUID, repository_id: uuid.UUID) -> list[Branch]:
+        """Selected branch entries for a repository under the current planner version."""
+        return list(
+            self.session.scalars(
+                select(Branch)
+                .where(
+                    Branch.analysis_id == analysis_id,
+                    Branch.repository_id == repository_id,
+                    Branch.planner_version == BRANCH_PLANNER_VERSION,
+                    Branch.decision == "selected",
+                )
+                .order_by(Branch.priority)
+            )
         )
 
     def _root_repository(self, analysis: AnalysisRun) -> Repository:
@@ -875,6 +1114,16 @@ class AnalysisPipeline:
                 "root_not_found", "Network root repository is missing", status_code=500
             )
         return repository
+
+
+def _parse_activity(value: object) -> datetime | None:
+    """Parse a provider commit timestamp into an aware datetime, or None."""
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return _as_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
+    except ValueError:
+        return None
 
 
 def _metadata_metrics(data: dict[str, Any]) -> dict[str, Any]:

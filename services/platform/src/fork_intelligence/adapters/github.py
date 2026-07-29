@@ -76,6 +76,69 @@ class GitHubClient:
         sha = str(commit.get("sha") or "")
         return {"name": str(data.get("name") or branch), "head_sha": sha}
 
+    def list_branches(
+        self, owner: str, name: str, *, max_branches: int | None = None
+    ) -> list[dict[str, str]]:
+        """Enumerate branch names and head SHAs for one repository.
+
+        The REST branch listing carries no dates or ahead/behind data, so the
+        planner establishes those signals through a separate bounded probe.
+        Pagination is capped so a repository with thousands of branches cannot
+        blow the request budget.
+        """
+        limit = max_branches or self.settings.max_branch_candidates
+        per_page = min(100, limit)
+        branches: list[dict[str, str]] = []
+        for page in range(1, (limit // per_page) + 2):
+            response = self._request(
+                "GET",
+                f"/repos/{_path_segment(owner)}/{_path_segment(name)}/branches",
+                params={"per_page": per_page, "page": page},
+            )
+            raw = response.json()
+            if not isinstance(raw, list):
+                raise GitHubError(
+                    "invalid_github_response", "Expected a list of branches", status_code=502
+                )
+            for item in raw:
+                commit = item.get("commit") or {}
+                branch_name = str(item.get("name") or "")
+                sha = str(commit.get("sha") or "")
+                if branch_name and sha:
+                    branches.append({"name": branch_name, "head_sha": sha})
+                if len(branches) >= limit:
+                    return branches
+            if "next" not in response.links:
+                break
+        return branches
+
+    def compare_commits(self, owner: str, name: str, base: str, head: str) -> dict[str, Any]:
+        """Ahead/behind and head activity for one branch relative to a base.
+
+        A single provider call, used as the planner's bounded relationship
+        probe: it yields the ``ahead`` signal and the head commit date without
+        fetching Git objects.
+        """
+        response = self._request(
+            "GET",
+            (
+                f"/repos/{_path_segment(owner)}/{_path_segment(name)}/compare/"
+                f"{_path_segment(base)}...{_path_segment(head)}"
+            ),
+        )
+        data = response.json()
+        commits = data.get("commits") or []
+        last_activity: str | None = None
+        if commits:
+            commit = commits[-1].get("commit") or {}
+            committer = commit.get("committer") or {}
+            last_activity = committer.get("date")
+        return {
+            "ahead": int(data.get("ahead_by") or 0),
+            "behind": int(data.get("behind_by") or 0),
+            "last_activity": last_activity,
+        }
+
     def iter_forks(
         self, owner: str, name: str, *, max_pages: int | None = None, start_page: int = 1
     ) -> Iterator[GitHubPage]:
