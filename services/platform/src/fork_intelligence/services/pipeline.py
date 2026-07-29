@@ -941,6 +941,9 @@ class AnalysisPipeline:
         input named rather than guessed at (AC-RA-RBP-002.3).
         """
         if self._stage_complete(analysis, "branch_planning"):
+            # A completed checkpoint is reusable only where its observed heads
+            # and selection inputs are still current (AC-RA-RBP-003.3).
+            self._revalidate_branch_plans(analysis)
             return
         self._stage(analysis, "branch_planning", 0.40)
         cap = self.settings.max_branches_per_fork
@@ -948,26 +951,11 @@ class AnalysisPipeline:
 
         for repository in self._planned_repositories(analysis):
             self._check_cancelled(analysis)
-            retrieval_time = datetime.now(UTC)
-            signals = self._branch_signals(repository)
-            plan = plan_branches(signals, cap=cap)
-            self._record_branch_plan(analysis.id, repository, plan, retrieval_time)
+            plan = self._plan_repository(analysis, repository, cap)
             totals["considered"] += plan.considered
             totals["selected"] += plan.selected
             totals["excluded"] += plan.excluded
             totals["unevaluated"] += plan.unevaluated
-            emit_event(
-                self.session,
-                analysis,
-                "branch_planning.repository_planned",
-                payload={
-                    "repository_id": str(repository.id),
-                    "selected": plan.selected,
-                    "excluded": plan.excluded,
-                    "unevaluated": plan.unevaluated,
-                },
-            )
-            self.session.commit()
 
         analysis.sampling = {
             **analysis.sampling,
@@ -982,6 +970,144 @@ class AnalysisPipeline:
             "branches_unevaluated": totals["unevaluated"],
         }
         self._finish_stage(analysis, "branch_planning", totals)
+
+    def _plan_repository(
+        self, analysis: AnalysisRun, repository: Repository, cap: int
+    ) -> BranchPlan:
+        """Plan one repository and persist the result."""
+        retrieval_time = datetime.now(UTC)
+        signals = self._branch_signals(repository)
+        plan = plan_branches(signals, cap=cap)
+        self._record_branch_plan(analysis.id, repository, plan, retrieval_time)
+        emit_event(
+            self.session,
+            analysis,
+            "branch_planning.repository_planned",
+            payload={
+                "repository_id": str(repository.id),
+                "selected": plan.selected,
+                "excluded": plan.excluded,
+                "unevaluated": plan.unevaluated,
+            },
+        )
+        self.session.commit()
+        return plan
+
+    def _revalidate_branch_plans(self, analysis: AnalysisRun) -> None:
+        """Re-check a checkpointed branch plan before a resumed run reuses it.
+
+        Only repositories whose observed heads or selection inputs moved are
+        re-planned; everything else keeps its sealed plan and its committed
+        evidence. When the provider cannot be reached the existing plan is
+        preserved and reported as unvalidated rather than silently trusted or
+        needlessly discarded.
+        """
+        cap = self.settings.max_branches_per_fork
+        sampling = analysis.sampling or {}
+        # A changed cap or planner version changes the selection inputs for
+        # every repository, so nothing from the old plan can be reused.
+        inputs_changed = (
+            _optional_int(sampling.get("branch_cap")) != cap
+            or sampling.get("branch_planner_version") != BRANCH_PLANNER_VERSION
+        )
+
+        reused: list[str] = []
+        replanned: list[dict[str, Any]] = []
+        unvalidated: list[dict[str, Any]] = []
+
+        for repository in self._planned_repositories(analysis):
+            self._check_cancelled(analysis)
+            cause: str | None = "selection_inputs_changed" if inputs_changed else None
+            if cause is None:
+                cause = self._branch_plan_invalidation(repository, analysis)
+            if cause is None:
+                reused.append(str(repository.id))
+                continue
+            if cause == "provider_unavailable":
+                # Preserved, but the caller must not read this as "confirmed
+                # current" (AC-RA-003.2).
+                unvalidated.append({"repository_id": str(repository.id), "cause": cause})
+                continue
+            self._plan_repository(analysis, repository, cap)
+            replanned.append({"repository_id": str(repository.id), "cause": cause})
+
+        summary = {
+            "revalidated_at": datetime.now(UTC).isoformat(),
+            "reused": len(reused),
+            "replanned": len(replanned),
+            "unvalidated": len(unvalidated),
+            "replanned_repositories": replanned,
+            "unvalidated_repositories": unvalidated,
+        }
+        analysis.sampling = {
+            **analysis.sampling,
+            "branch_cap": cap,
+            "branch_planner_version": BRANCH_PLANNER_VERSION,
+            "branch_plan_revalidation": summary,
+        }
+        if unvalidated:
+            analysis.warnings = [
+                *analysis.warnings,
+                {
+                    "code": "branch_plan_unvalidated",
+                    "message": (
+                        "Branch plans for some repositories could not be re-validated "
+                        "against the provider on resume and were reused as-is"
+                    ),
+                    "affected_scope": "branch_plan_revalidation",
+                    "repositories": len(unvalidated),
+                },
+            ]
+        emit_event(
+            self.session,
+            analysis,
+            "branch_planning.revalidated",
+            stage="branch_planning",
+            payload=summary,
+        )
+        checkpoint = self.session.scalar(
+            select(StageCheckpoint).where(
+                StageCheckpoint.analysis_id == analysis.id,
+                StageCheckpoint.stage == "branch_planning",
+            )
+        )
+        if checkpoint is not None:
+            checkpoint.cursor = {**(checkpoint.cursor or {}), "revalidation": summary}
+        self.session.commit()
+
+    def _branch_plan_invalidation(
+        self, repository: Repository, analysis: AnalysisRun
+    ) -> str | None:
+        """Name why this repository's plan cannot be reused, or None if it can.
+
+        Compares the heads the plan observed against the provider's current
+        heads. Only the selected candidates matter: those are the refs the
+        structural stage will fetch, so a moved head there would make the
+        analysis cite a state it never actually examined.
+        """
+        planned = self._selected_branches(analysis.id, repository.id)
+        if not planned:
+            return "no_plan_for_current_version"
+        try:
+            current = {
+                branch["name"]: branch["head_sha"]
+                for branch in self.github.list_branches(
+                    repository.owner,
+                    repository.name,
+                    max_branches=self.settings.max_branch_candidates,
+                )
+            }
+        except GitHubError as exc:
+            if exc.code in PROVIDER_EXHAUSTED_CODES:
+                raise
+            return "provider_unavailable"
+        for entry in planned:
+            observed = current.get(entry.name)
+            if observed is None:
+                return "branch_disappeared"
+            if entry.head_sha and observed != entry.head_sha:
+                return "head_moved"
+        return None
 
     def _planned_repositories(self, analysis: AnalysisRun) -> list[Repository]:
         """The root plus shortlisted forks, the repositories structural fetch covers."""
@@ -1114,6 +1240,10 @@ class AnalysisPipeline:
                 "root_not_found", "Network root repository is missing", status_code=500
             )
         return repository
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _parse_activity(value: object) -> datetime | None:
