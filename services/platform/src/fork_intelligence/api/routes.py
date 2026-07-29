@@ -18,6 +18,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from fork_intelligence.api.deps import get_db_session
+from fork_intelligence.api.projections import (
+    project_branch_plan,
+    project_provider_access,
+    project_repository_branch_plan,
+)
 from fork_intelligence.config import get_settings
 from fork_intelligence.db import get_session_factory
 from fork_intelligence.domain.comparisons import (
@@ -103,7 +108,7 @@ def create_analysis(
     response: Response,
     session: Annotated[Session, Depends(get_db_session)],
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
-) -> AnalysisRun:
+) -> AnalysisRead:
     identifier = parse_repository_identifier(body.repository)
     configuration = body.configuration.model_dump(exclude_none=True)
     settings = get_settings()
@@ -143,7 +148,7 @@ def create_analysis(
                 status_code=409,
             )
         response.status_code = status.HTTP_200_OK
-        return existing
+        return _analysis_read(session, existing)
     active_for_repository = session.scalar(
         select(AnalysisRun).where(
             func.lower(AnalysisRun.requested_identifier) == identifier.full_name.lower(),
@@ -212,7 +217,7 @@ def create_analysis(
                 status_code=409,
             ) from exc
         response.status_code = status.HTTP_200_OK
-        return winner
+        return _analysis_read(session, winner)
     emit_event(
         session,
         analysis,
@@ -234,14 +239,28 @@ def create_analysis(
         ]
         job.status = "dispatch_pending"
     session.commit()
-    return analysis
+    return _analysis_read(session, analysis)
+
+
+def _analysis_read(session: Session, analysis: AnalysisRun) -> AnalysisRead:
+    """Assemble the analysis read model including access and branch-plan disclosure.
+
+    Used everywhere an AnalysisRead is returned so the projections cannot drift
+    between the create, read, cancel, resume, and export paths.
+    """
+    return AnalysisRead.model_validate(analysis).model_copy(
+        update={
+            "access": project_provider_access(analysis),
+            "branch_plan": project_branch_plan(session, analysis),
+        }
+    )
 
 
 @router.get("/analyses/{analysis_id}", response_model=AnalysisRead, tags=["analyses"])
 def get_analysis(
     analysis_id: uuid.UUID, session: Annotated[Session, Depends(get_db_session)]
-) -> AnalysisRun:
-    return require_analysis(session, analysis_id)
+) -> AnalysisRead:
+    return _analysis_read(session, require_analysis(session, analysis_id))
 
 
 @router.get("/analyses/{analysis_id}/events", tags=["analyses"])
@@ -375,7 +394,7 @@ def analysis_overview(
             for score, repository in rows
         ]
     return OverviewRead(
-        analysis=AnalysisRead.model_validate(analysis),
+        analysis=_analysis_read(session, analysis),
         counts={
             "repositories": total,
             "forks": max(0, total - 1),
@@ -484,7 +503,8 @@ def fork_detail(
                         "provenance": item.provenance,
                     }
                     for item in evidence
-                ]
+                ],
+                "branch_plan": project_repository_branch_plan(session, analysis_id, repository_id),
             }
         )
     raise PlatformError(
@@ -724,7 +744,12 @@ def export_analysis(
         upstream_rows = [row for row in rows if row[0].id == analysis.root_repository_id]
         fork_rows = [row for row in rows if row[0].id != analysis.root_repository_id]
         payload = {
-            "analysis": AnalysisRead.model_validate(analysis).model_dump(mode="json"),
+            # Export format changes belong to the export work order. Excluding
+            # the new projections keeps this payload byte-identical rather than
+            # shipping nulls that would read as "no access data recorded".
+            "analysis": AnalysisRead.model_validate(analysis).model_dump(
+                mode="json", exclude={"access", "branch_plan"}
+            ),
             "generated_at": (
                 analysis.completed_at or analysis.updated_at or analysis.created_at
             ).isoformat(),
@@ -777,21 +802,21 @@ def export_analysis(
 @router.post("/analyses/{analysis_id}/cancel", response_model=AnalysisRead, tags=["analyses"])
 def cancel_analysis(
     analysis_id: uuid.UUID, session: Annotated[Session, Depends(get_db_session)]
-) -> AnalysisRun:
+) -> AnalysisRead:
     analysis = require_analysis(session, analysis_id)
     if analysis.status in {"completed", "failed", "cancelled", "cancelling"}:
-        return analysis
+        return _analysis_read(session, analysis)
     analysis.cancel_requested = True
     analysis.status = "cancelling"
     emit_event(session, analysis, "analysis.cancel_requested")
     session.commit()
-    return analysis
+    return _analysis_read(session, analysis)
 
 
 @router.post("/analyses/{analysis_id}/resume", response_model=AnalysisRead, tags=["analyses"])
 def resume_analysis(
     analysis_id: uuid.UUID, session: Annotated[Session, Depends(get_db_session)]
-) -> AnalysisRun:
+) -> AnalysisRead:
     analysis = require_analysis(session, analysis_id)
     if analysis.status == "queued":
         pending_job = session.scalar(
@@ -812,11 +837,11 @@ def resume_analysis(
             except Exception:
                 pending_job.status = "dispatch_pending"
             session.commit()
-        return analysis
+        return _analysis_read(session, analysis)
     if analysis.status in {"completed", "running", "cancelling"}:
-        return analysis
+        return _analysis_read(session, analysis)
     if analysis.status not in {"failed", "cancelled", "partial"}:
-        return analysis
+        return _analysis_read(session, analysis)
     analysis.cancel_requested = False
     analysis.status = "queued"
     analysis.error = None
@@ -836,7 +861,7 @@ def resume_analysis(
             },
         ]
     session.commit()
-    return analysis
+    return _analysis_read(session, analysis)
 
 
 def _fork_rows(

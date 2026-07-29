@@ -290,8 +290,10 @@ export interface components {
         };
         /** AnalysisRead */
         AnalysisRead: {
+            access?: components["schemas"]["ProviderAccessRead"] | null;
             /** Analysis Version */
             analysis_version: string;
+            branch_plan?: components["schemas"]["BranchPlanRead"] | null;
             /** Cancel Requested */
             cancel_requested: boolean;
             /** Completed At */
@@ -349,6 +351,93 @@ export interface components {
             warnings: {
                 [key: string]: unknown;
             }[];
+        };
+        /**
+         * BranchPlanCounts
+         * @description Branch coverage counts (AC-RA-RBP-004.1/.2).
+         *
+         *     ``excluded_by_cap`` and ``unevaluated`` are kept apart on purpose: the first
+         *     is a sampling choice, the second is missing data.
+         */
+        BranchPlanCounts: {
+            /**
+             * Considered
+             * @default 0
+             */
+            considered: number;
+            /**
+             * Excluded By Cap
+             * @default 0
+             */
+            excluded_by_cap: number;
+            /**
+             * Selected
+             * @default 0
+             */
+            selected: number;
+            /**
+             * Structurally Analyzed
+             * @default 0
+             */
+            structurally_analyzed: number;
+            /**
+             * Unevaluated
+             * @default 0
+             */
+            unevaluated: number;
+        };
+        /**
+         * BranchPlanEntryRead
+         * @description One versioned branch-candidate decision.
+         */
+        BranchPlanEntryRead: {
+            /** Branch Name */
+            branch_name: string;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "selected" | "excluded" | "unevaluated";
+            /** Head Sha */
+            head_sha?: string | null;
+            /** Is Default */
+            is_default: boolean;
+            /** Planner Version */
+            planner_version: string;
+            /** Priority */
+            priority: number;
+            /** Repository Full Name */
+            repository_full_name?: string | null;
+            /**
+             * Repository Id
+             * Format: uuid
+             */
+            repository_id: string;
+            /** Retrieval Time */
+            retrieval_time?: string | null;
+            /** Selection Reason */
+            selection_reason?: string | null;
+        };
+        /**
+         * BranchPlanRead
+         * @description Analysis-level branch-plan disclosure (AC-RA-RBP-002.4).
+         *
+         *     Deliberately carries counts, caps, version, and a bounded reason summary
+         *     rather than every entry: an analysis spans many repositories, and the
+         *     per-candidate list belongs on the fork detail where it stays bounded.
+         */
+        BranchPlanRead: {
+            counts?: components["schemas"]["BranchPlanCounts"];
+            /** Effective Cap */
+            effective_cap?: number | null;
+            /** Planner Version */
+            planner_version?: string | null;
+            /** Selection Reasons */
+            selection_reasons?: {
+                [key: string]: number;
+            };
+            /** Structural Coverage Default Only */
+            structural_coverage_default_only?: boolean | null;
         };
         /** ClusterCollection */
         ClusterCollection: {
@@ -420,6 +509,22 @@ export interface components {
             updated_at: string;
             /** Version */
             version: string;
+        };
+        /**
+         * CredentialModeTransitionRead
+         * @description One recorded change of effective credential mode.
+         */
+        CredentialModeTransitionRead: {
+            /** Coverage Limitation */
+            coverage_limitation?: string | null;
+            /** From Mode */
+            from_mode: string;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Reason */
+            reason: string;
+            /** To Mode */
+            to_mode: string;
         };
         /** EvolutionRead */
         EvolutionRead: {
@@ -502,10 +607,50 @@ export interface components {
             /** Type */
             type: string;
         };
+        /**
+         * ProviderAccessRead
+         * @description How provider access affected an analysis (AC-RA-AGA-001.2, 002.3, 003.1-.3).
+         *
+         *     Carries the effective mode and capacity only; the operator credential itself
+         *     has no representation here and none of these fields is derived from it.
+         */
+        ProviderAccessRead: {
+            /** Access Condition */
+            access_condition?: {
+                [key: string]: unknown;
+            } | null;
+            /** Coverage Limitations */
+            coverage_limitations?: string[];
+            /** Credential Mode */
+            credential_mode: string;
+            quota: components["schemas"]["ProviderQuotaRead"];
+            /** Transitions */
+            transitions?: components["schemas"]["CredentialModeTransitionRead"][];
+        };
+        /**
+         * ProviderQuotaRead
+         * @description Sanitized provider capacity. Only these fields ever cross the boundary.
+         */
+        ProviderQuotaRead: {
+            /** Credential Mode */
+            credential_mode?: string | null;
+            /** Limit */
+            limit?: number | null;
+            /** Node Count */
+            node_count?: number | null;
+            /** Remaining */
+            remaining?: number | null;
+            /** Reset */
+            reset?: number | null;
+            /** Resource */
+            resource?: string | null;
+        };
         /** RepositoryRead */
         RepositoryRead: {
             /** Archived */
             archived: boolean;
+            /** Branch Plan */
+            branch_plan?: components["schemas"]["BranchPlanEntryRead"][];
             /** Classification */
             classification?: {
                 [key: string]: unknown;
