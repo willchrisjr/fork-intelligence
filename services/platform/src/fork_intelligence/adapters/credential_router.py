@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from fork_intelligence.adapters.github import GitHubClient, GitHubPage
+from fork_intelligence.adapters.github_graphql import GitHubGraphQLClient, GraphQLResult
 from fork_intelligence.config import Settings, get_settings
 from fork_intelligence.errors import GitHubError
 
@@ -62,8 +63,11 @@ class GitHubCredentialRouter:
         *,
         authenticated: GitHubClient | None = None,
         anonymous: GitHubClient | None = None,
+        graphql: GitHubGraphQLClient | None = None,
     ) -> None:
         self.settings = settings or get_settings()
+        self._last_provenance: dict[str, Any] = {}
+        self._owned_graphql: GitHubGraphQLClient | None = None
 
         # An explicitly supplied transport always wins; otherwise authenticated
         # access exists only when a credential is actually configured.
@@ -85,6 +89,13 @@ class GitHubCredentialRouter:
             del self._anonymous.client.headers["authorization"]
 
         has_credential = self._authenticated is not None
+        # GraphQL is authenticated-only by construction: without a credential
+        # there is nothing to accelerate with.
+        if graphql is None and has_credential and self.settings.github_graphql_enabled:
+            graphql = GitHubGraphQLClient(self.settings)
+            self._owned_graphql = graphql
+        self._graphql = graphql if has_credential else None
+
         self._state = _RouterState(mode="authenticated" if has_credential else "anonymous")
         if not has_credential:
             # AC-RA-AGA-002.1: an absent credential is a starting condition
@@ -120,7 +131,39 @@ class GitHubCredentialRouter:
         return pending
 
     def get_repository(self, owner: str, name: str, *, etag: str | None = None) -> dict[str, Any]:
-        return self._route(lambda client: client.get_repository(owner, name, etag=etag))
+        """Return normalized repository metadata, accelerated where possible.
+
+        REST is always consulted, so the result is exactly what REST alone
+        would have produced; GraphQL only annotates which fields it agreed on.
+        That keeps REST the correctness baseline and makes the accelerator
+        incapable of degrading data, at the cost of not saving a REST call.
+        """
+        accelerated = self._accelerate(owner, name)
+        rest = self._route(lambda client: client.get_repository(owner, name, etag=etag))
+        self._last_provenance = _field_provenance(rest, accelerated)
+        return rest
+
+    @property
+    def last_repository_provenance(self) -> dict[str, Any]:
+        """Field-level provenance for the most recent get_repository call."""
+        return dict(self._last_provenance)
+
+    def _accelerate(self, owner: str, name: str) -> GraphQLResult | None:
+        """Try the GraphQL batch, but only while the credential is in play."""
+        if self._graphql is None or self._state.mode != "authenticated":
+            return None
+        try:
+            result = self._graphql.fetch_repository(owner, name)
+        except GitHubError as exc:
+            if exc.code not in FALLBACK_ELIGIBLE_CODES:
+                return None
+            # The credential itself is rejected or spent. Route the rest of
+            # this analysis through the existing fallback path rather than
+            # letting REST rediscover the same failure.
+            self._record_fallback(exc)
+            return None
+        self._observe_quota(result.quota)
+        return result
 
     def get_branch(self, owner: str, name: str, branch: str) -> dict[str, Any]:
         return self._route(lambda client: client.get_branch(owner, name, branch))
@@ -218,12 +261,53 @@ class GitHubCredentialRouter:
         for client in self._owned:
             client.close()
         self._owned = []
+        if self._owned_graphql is not None:
+            self._owned_graphql.close()
+            self._owned_graphql = None
 
     def __enter__(self) -> GitHubCredentialRouter:
         return self
 
     def __exit__(self, *_: object) -> None:
         self.close()
+
+
+def _field_provenance(rest: dict[str, Any], accelerated: GraphQLResult | None) -> dict[str, Any]:
+    """Attribute each normalized field to the transport that produced it.
+
+    A field is credited to GraphQL only when GraphQL supplied it *and* agreed
+    with REST. Disagreement is recorded rather than hidden, because a silent
+    divergence between the two transports is exactly the condition that would
+    make accelerated coverage untrustworthy.
+    """
+    if accelerated is None or accelerated.is_empty:
+        return {
+            "source": "github_rest",
+            "fields": dict.fromkeys(rest, "github_rest"),
+            "graphql_attempted": accelerated is not None,
+            "partial_errors": list(accelerated.partial_errors) if accelerated else [],
+        }
+
+    fields: dict[str, str] = {}
+    divergent: list[str] = []
+    for key in rest:
+        if key not in accelerated.fields:
+            fields[key] = "github_rest"
+        elif accelerated.fields[key] == rest[key]:
+            fields[key] = "github_graphql"
+        else:
+            fields[key] = "github_rest"
+            divergent.append(key)
+
+    return {
+        "source": "github_graphql+github_rest",
+        "fields": fields,
+        "graphql_attempted": True,
+        "graphql_cost": accelerated.cost,
+        "partial_errors": list(accelerated.partial_errors),
+        "divergent_fields": sorted(divergent),
+        "branches_observed": len(accelerated.branches),
+    }
 
 
 def _coerce_int(value: Any) -> int | None:

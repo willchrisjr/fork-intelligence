@@ -390,3 +390,76 @@ def test_operator_credential_never_reaches_persisted_state(
         *[str(event.payload) for event in events],
     ]
     assert TOKEN not in "".join(surfaces)
+
+
+class _AcceleratedRouter(FakeRouter):
+    """Reports GraphQL field attribution, as the real router does after get_repository."""
+
+    last_repository_provenance: dict[str, Any] = {
+        "source": "github_graphql+github_rest",
+        "fields": {"stars": "github_graphql"},
+        "graphql_attempted": True,
+    }
+
+    def iter_forks(self, owner: str, name: str, **_: object) -> Iterator[GitHubPage]:
+        return iter(
+            [
+                GitHubPage(
+                    items=[_normalized(77, "someone/fork")],
+                    page=1,
+                    has_next=False,
+                    etag=None,
+                    quota=QUOTA,
+                )
+            ]
+        )
+
+
+def test_fork_snapshots_are_not_credited_to_graphql(
+    session: Session, analysis: AnalysisRun
+) -> None:
+    """Fork pages come from REST pagination; crediting GraphQL would be fabricated."""
+    pipeline = _pipeline(session, _AcceleratedRouter())
+    pipeline._resolve(analysis)
+    pipeline._census(analysis)
+    session.commit()
+
+    fork = session.scalar(select(Repository).where(Repository.owner == "someone"))
+    assert fork is not None
+    snapshot = session.scalar(
+        select(RepositorySnapshot).where(RepositorySnapshot.repository_id == fork.id)
+    )
+    assert snapshot is not None
+    assert snapshot.provenance["source"] == "github_rest"
+    assert "fields" not in snapshot.provenance
+
+    root = session.scalar(select(Repository).where(Repository.owner == "root"))
+    assert root is not None
+    root_snapshot = session.scalar(
+        select(RepositorySnapshot).where(RepositorySnapshot.repository_id == root.id)
+    )
+    assert root_snapshot is not None
+    # The repository actually fetched through get_repository keeps its attribution.
+    assert root_snapshot.provenance["source"] == "github_graphql+github_rest"
+
+
+def test_snapshot_provenance_is_refreshed_when_metadata_is_refreshed(
+    session: Session, analysis: AnalysisRun
+) -> None:
+    pipeline = _pipeline(session, _AcceleratedRouter())
+    pipeline._resolve(analysis)
+    session.commit()
+
+    # A resumed attempt re-resolves under plain REST.
+    plain = _pipeline(session, FakeRouter())
+    plain._stage_complete = lambda *_: False  # type: ignore[method-assign]
+    plain._resolve(analysis)
+    session.commit()
+
+    root = session.scalar(select(Repository).where(Repository.owner == "root"))
+    assert root is not None
+    snapshot = session.scalar(
+        select(RepositorySnapshot).where(RepositorySnapshot.repository_id == root.id)
+    )
+    assert snapshot is not None
+    assert snapshot.provenance["source"] == "github_rest"
