@@ -67,13 +67,18 @@
 
 ## Blockers
 
-- GitHub-hosted runners are blocked by an account billing lock. The exact
-  annotation and recovery checklist are tracked in issue #2 and
-  `docs/HANDOFF.md`. Local validation remains available, but `checks` cannot yet
-  be required by the `main` ruleset.
-- Dependabot reports two open moderate alerts: pytest `<9.0.3` and the PostCSS
-  `8.4.31` instance pulled through Next.js. Focused remediation is the first code
-  work after hosted CI is restored.
+- Dependabot reports seven open alerts, six high: `brace-expansion` (1.x and
+  2.x lines) and `js-yaml`, both transitive through the ESLint toolchain, plus
+  the moderate pytest alert. Pull request #16 raises pytest to 9.1.1 and is
+  green. The PostCSS alert closed when #43 updated Next.js. Focused remediation
+  of the remaining six is the next code work.
+- The retired 8090 Software Factory integration still posts a `drift-bot`
+  commit status and inline review threads on pull requests. Because the
+  `Protect main` ruleset sets `required_review_thread_resolution`, each
+  unresolved thread it opens blocks the merge, even though `drift-bot` is not a
+  required status check. Its findings compare code against blueprints that are
+  no longer maintained. The GitHub App should be uninstalled; until then, its
+  threads must be resolved manually before merging.
 - Live AI enrichment is intentionally disabled and is not an MVP blocker.
 
 ## Validation performed
@@ -104,10 +109,10 @@
 
 ## Failed validation
 
-- GitHub-hosted Actions can now parse and create the `CI / checks` job, but the
-  job annotation says the account is locked due to a billing issue. Required CI
-  remains intentionally absent from the `main` ruleset until that account-level
-  issue is resolved and the check passes.
+- GitHub-hosted Actions were blocked by an account billing lock, which refused
+  each job a runner before any step executed. Resolved 2026-08-26; hosted runs
+  pass and `checks` is now a required status check on `main`. Retained as the
+  record of a failure that is no longer current.
 - The in-app Browser runtime failed during repeated initialization attempts with
   `Cannot redefine property: process`; the documented Playwright CLI/test
   fallback passed outside the macOS sandbox.
@@ -148,8 +153,8 @@ Detailed sequencing and exit criteria are maintained in `docs/ROADMAP.md`.
   not alter analysis data or shared API contracts.
 - The public repository's `main` branch is protected by an active ruleset that
   requires pull requests, linear squash-only history, and resolved review
-  threads while blocking deletion and force pushes. Required CI will be added
-  after the account billing lock is cleared.
+  threads while blocking deletion and force pushes. Required CI was added on
+  2026-08-26: `checks` is a non-strict required status check on `main`.
 - Public submission is admission-controlled; repeated analyses for one
   repository serialize, queue depth and disk watermarks are enforced, and Redis
   per-client throttling is a defense-in-depth layer.

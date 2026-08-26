@@ -12,13 +12,13 @@ here.
 > Continue Fork Intelligence from
 > `/Users/wma/Codex/Developer/personal/fork-intelligence`. Read `AGENTS.md`,
 > `CONTRIBUTING.md`, `docs/HANDOFF.md`, `docs/STATUS.md`, and `docs/ROADMAP.md`.
-> Inspect current Git and GitHub state before editing. First verify whether GitHub
-> billing issue #2 is resolved and restore required hosted CI. Then resolve the
-> two open moderate Dependabot alerts in focused pull requests. After governance
-> is green, begin Priority 1 analysis coverage in this order: authenticated
-> GraphQL acceleration with REST fallback, deterministic three-branch planning,
-> bounded explicit blob hydration, and real-network coverage benchmarks. Follow
-> the protected-`main` pull-request workflow and never execute analyzed code.
+> Inspect current Git and GitHub state before editing. Hosted CI and the billing
+> lock are resolved (issue #2 closed 2026-08-26) and `checks` is now required on
+> `main`; authenticated GraphQL acceleration and deterministic three-branch
+> planning have shipped. Resolve the open Dependabot alerts in focused pull
+> requests, then continue Priority 1 analysis coverage: bounded explicit blob
+> hydration, then real-network coverage benchmarks. Follow the protected-`main`
+> pull-request workflow and never execute analyzed code.
 
 ## Project identity and current state
 
@@ -44,6 +44,11 @@ Dependabot security updates, delete merged branches, and enable secret scanning
 plus push protection.
 
 ## Immediate user action: unlock GitHub billing
+
+**Resolved 2026-08-26.** The account billing lock was cleared and the repository
+is public; hosted runners have been assigning and passing since 2026-07-28.
+Issue #2 is closed. The remainder of this section is retained as the historical
+record of the diagnosis.
 
 The definitive annotation on
 [Actions run 29320561933](https://github.com/willchrisjr/fork-intelligence/actions/runs/29320561933)
@@ -84,6 +89,12 @@ Official references:
 - <https://docs.github.com/en/billing/concepts/product-billing/github-actions>
 
 ## P0 — Restore enforceable CI governance
+
+**Resolved 2026-08-26.** `required_status_checks` with context `checks` was
+added to the `Protect main` ruleset (id 18920914, non-strict), alongside the
+existing deletion, non-fast-forward, linear-history, and pull-request rules.
+The acceptance criteria below are met. Retained as the record of what was
+verified.
 
 Do this immediately after the billing state is corrected.
 
@@ -128,6 +139,28 @@ Acceptance criteria:
 Do not silently dismiss these alerts or add a broad override without proving why
 it is safe.
 
+**Inventory refreshed 2026-08-26.** The two alerts described below were the
+complete set when this document was written; there are now seven open alerts,
+six of them high. The two original entries are retained because their reasoning
+still applies, annotated with current state.
+
+| Package | Vulnerable range | First patched | State |
+| --- | --- | --- | --- |
+| `brace-expansion` | `< 1.1.17`, `< 1.1.18` | 1.1.18 | Open (high). Lockfile has 1.1.16 |
+| `brace-expansion` | `>= 2.0.0, < 2.1.3`, `< 2.1.4` | 2.1.4 | Open (high). Lockfile has 2.1.2 |
+| `js-yaml` | `>= 4.0.0, < 4.3.0`, `< 4.3.1` | 4.3.1 | Open (high) |
+| `pytest` | `< 9.0.3` | 9.0.3 | Open (moderate). #16 bumps to 9.1.1 and is green |
+
+`brace-expansion` and `js-yaml` arrive transitively through the ESLint
+toolchain — `eslint`, `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and
+`eslint-plugin-react` pull `minimatch@3.1.5`, which declares
+`brace-expansion: ^1.1.7`. That range already admits the patched 1.1.18
+(published 2026-07-30), so a targeted lockfile refresh should clear these
+without an override. Note that Dependabot's own security job reports
+`security_update_not_possible` with `latest-resolvable-version: 1.1.16` for
+this dependency and has failed weekly since 2026-08-01; that claim does not
+match the published version set and should not be taken at face value.
+
 ### Pytest alert
 
 - Alert: <https://github.com/willchrisjr/fork-intelligence/security/dependabot/2>
@@ -149,6 +182,11 @@ Recommended pull request:
 5. Confirm the Dependabot alert closes after merge.
 
 ### PostCSS alert
+
+**Resolved 2026-08-26** — closed by the grouped dependency update in #43, which
+moved `next` from `^16.1.6` to `^16.3.2` and dropped the vulnerable transitive
+`postcss 8.4.31`. No separate remediation pull request was needed. Retained for
+the reasoning.
 
 - Alert: <https://github.com/willchrisjr/fork-intelligence/security/dependabot/1>
 - Vulnerable instance: `postcss 8.4.31`
