@@ -104,7 +104,7 @@ git commit -m "docs: record WO-12 hydration mechanism measurement"
 - Test: `tests/platform/test_config.py`
 
 **Interfaces:**
-- Consumes: the measured delta from Task 0.
+- Consumes: the transfer delta measured and recorded in Task 0. **Task 0 sets this default; do not start Task 1 before it.**
 - Produces: `Settings.max_hydration_bytes: int` — the per-fork hydration byte ceiling, consumed by `hydrate_blobs` in Task 4.
 
 - [ ] **Step 1: Write the failing test**
@@ -112,11 +112,13 @@ git commit -m "docs: record WO-12 hydration mechanism measurement"
 Add to `tests/platform/test_config.py`:
 
 ```python
-def test_max_hydration_bytes_has_a_bounded_per_fork_default() -> None:
+def test_max_hydration_bytes_is_a_per_fork_ceiling_below_the_store_cap() -> None:
     settings = Settings()
 
-    assert settings.max_hydration_bytes == 250_000_000
+    # Asserts the invariant, not the literal: the exact default is set from
+    # Task 0's measurement and may legitimately change.
     assert settings.max_hydration_bytes < settings.max_git_store_bytes
+    assert settings.max_hydration_bytes >= 10 * settings.max_blob_bytes
 
 
 def test_max_hydration_bytes_rejects_values_outside_its_bounds() -> None:
@@ -134,7 +136,7 @@ from pydantic import ValidationError
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run --directory services/platform pytest tests/platform/test_config.py -k max_hydration_bytes -v`
+Run: `uv run --directory services/platform pytest tests/platform/test_config.py -k max_hydration -v`
 
 Expected: FAIL with `AttributeError: 'Settings' object has no attribute 'max_hydration_bytes'`.
 
@@ -146,11 +148,13 @@ In `services/platform/src/fork_intelligence/config.py`, directly after the `max_
     max_hydration_bytes: int = Field(default=250_000_000, ge=1024, le=100_000_000_000)
 ```
 
+`250_000_000` is the starting default. **Check it against Task 0's recorded delta before accepting it:** if hydrating a single commit measured more than 25 MB, raise the default so it still accommodates at least ten commits, and record the new value and its reasoning in the spec alongside the measurement.
+
 The default is deliberately far below `max_git_store_bytes` (5 GB). The store cap is per-network and shared across every fork in an analysis; without a per-fork ceiling the first fork can consume the whole budget and starve the rest.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run --directory services/platform pytest tests/platform/test_config.py -k max_hydration_bytes -v`
+Run: `uv run --directory services/platform pytest tests/platform/test_config.py -k max_hydration -v`
 
 Expected: PASS, 2 passed.
 
@@ -298,6 +302,8 @@ Pure local. No network.
 
 **Files:**
 - Modify: `services/platform/src/fork_intelligence/adapters/git.py` (add dataclass near `HistoryComparison:37`, add method to `BareNetworkStore`)
+
+**Note on `absent_objects`:** it records object IDs only, deliberately not sizes. An absent object has no locally-knowable size — `cat-file --batch-check` reports it as `<oid> missing` with no type and no size, and tree entries carry no sizes. Oversized blobs are detected after a fetch in Task 4, not predicted here.
 - Test: `tests/platform/test_git_analysis.py`
 
 **Interfaces:**

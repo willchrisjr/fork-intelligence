@@ -78,8 +78,17 @@ Three additions to `adapters/git.py`, one wiring change in
 ### `BlobHydrationPlan`
 
 A dataclass holding the three endpoint refs, the ordered list of shortlisted
-commits, and the enumerated absent-object set with sizes. Produced locally with
-no network access.
+commits, and the enumerated absent-object set. Produced locally with no network
+access.
+
+The plan records object IDs only, **not sizes**. Size is not knowable locally
+for an object that is absent: `cat-file --batch-check` reports a missing object
+as `<oid> missing` with no type and no size, and tree entries do not carry
+sizes either. Oversized blobs are therefore detected *after* a fetch rather
+than predicted before one — a fetch that succeeds while leaving objects still
+absent means the remote declined to serve them under `blob:limit`, which is
+recorded as `oversized`. An earlier draft of this section claimed the plan
+carried sizes; that was not achievable and is corrected here.
 
 ### `BareNetworkStore.plan_blob_hydration(upstream_ref, fork_ref, *, deadline)`
 
