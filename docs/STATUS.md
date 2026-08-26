@@ -15,9 +15,11 @@
 - SQLite 3.54.0
 - GitHub CLI authenticated and API reachable
 - Colima 0.10.3, Docker CLI 29.6.1/server 29.5.2, Docker Compose 5.3.1
-- PostgreSQL 17, Redis 7.4, API, worker, migration, and web containers were
+- PostgreSQL 17, Redis 8.10, API, worker, migration, and web containers were
   validated through the application Compose profile; the Colima daemon may be
-  stopped between active development sessions
+  stopped between active development sessions. Redis moved 7.4 -> 8.10 on
+  2026-08-26 (#38) and has since been exercised by CI, but the application
+  Compose profile has not been re-validated against 8.10
 
 ## Completed
 
