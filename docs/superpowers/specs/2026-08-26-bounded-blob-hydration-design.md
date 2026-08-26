@@ -170,6 +170,47 @@ answers no, the fallback is the blanket-fetch behaviour retained but scoped to
 the shortlist range rather than the whole branch, and the spec is revised before
 implementation continues.
 
+### Measured 2026-08-26 — the selected mechanism does not work
+
+Run against `pallets/flask`, `GIT_NO_LAZY_FETCH=1` set, baseline established by
+a `--filter=blob:none` fetch (4,148 KB, full ancestry, 236 head-tree blobs
+absent).
+
+| Mechanism | Result |
+| --- | --- |
+| Fetch explicit commit SHA with `--filter=blob:limit=2000000` | **Does not hydrate.** Fetch "succeeds" in 0.03s and transfers no blobs; all 236 remain missing and `patch-id` fails |
+| Same filter into a *fresh* store | Works — 236/236 blobs present, 13,876 KB. The filter itself is fine |
+| `git fetch --refetch` with the same filter | Works — 236/236 present, but +14,148 KB in 11.7s, because it ignores negotiation and refetches the whole history under the filter |
+| Fetch a bare blob OID | Rejected: `fatal: bad revision`, `did not send all necessary objects` |
+| Lazy fetch via the promisor remote | Works, and fetches only what is needed — but is disabled by `GIT_NO_LAZY_FETCH=1` |
+
+**Root cause.** Git's fetch negotiation is commit-based. Once the commit object
+is present locally, a fetch naming that commit concludes there is nothing to
+transfer and never re-evaluates the filter to backfill blobs. Partial clone has
+no incremental "widen the filter for these specific commits" operation. The
+only two ways to obtain previously-filtered blobs are `--refetch`
+(all-or-nothing) and lazy fetch (on demand, per object).
+
+**A constraint in this spec was also wrong.** The Constraints section claimed
+the store has "no named remote", so a promisor remote was unavailable. Git
+**auto-configures one** on the first filtered fetch:
+
+```
+[remote "https://github.com/pallets/flask.git"]
+	promisor = true
+	partialclonefilter = blob:none
+```
+
+The promisor remote already exists in every production store. `GIT_NO_LAZY_FETCH=1`
+is the only thing preventing lazy fetch, and it is doing real work: with it
+unset, a single `cat-file --batch-check` over one tree triggered a per-object
+fetch storm that had not finished after two minutes. With it set, the same
+command returned in 0.13s and correctly reported 30 objects missing.
+
+**Consequence.** The "batched fetch of explicit commit SHAs" mechanism is
+withdrawn. The design needs a decision before implementation continues; the
+options are recorded in the work order discussion, not resolved here.
+
 ## Data flow
 
 ```
