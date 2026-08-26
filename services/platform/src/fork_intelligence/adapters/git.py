@@ -250,12 +250,20 @@ class BareNetworkStore:
         pinned = f"refs/analyses/{analysis_id}/repositories/{github_repository_id}/{head_sha}"
         refspec = f"+refs/heads/{branch}:{staging}"
         try:
+            # One filtered fetch, not two. A blob:none fetch followed by a
+            # blob:limit fetch of the same commits cannot backfill blobs: Git
+            # negotiation is commit-based, so the second fetch sees the commits
+            # already present and transfers nothing. Measured against
+            # pallets/flask on 2026-08-26 - the second fetch moved 332 KB of
+            # bookkeeping and zero of 236 head-tree blobs, leaving every
+            # shortlisted commit without patch evidence. Blobs above
+            # max_blob_bytes are still excluded and surface as missing.
             self.git.run(
                 [
                     "fetch",
                     "--no-tags",
                     "--no-recurse-submodules",
-                    "--filter=blob:none",
+                    f"--filter=blob:limit={self.settings.max_blob_bytes}",
                     identifier.clone_url,
                     refspec,
                 ],
@@ -272,23 +280,6 @@ class BareNetworkStore:
                     "Branch moved between GitHub census and Git fetch; retry from a fresh snapshot",
                     status_code=409,
                 )
-            try:
-                self.git.run(
-                    [
-                        "fetch",
-                        "--no-tags",
-                        "--no-recurse-submodules",
-                        f"--filter=blob:limit={self.settings.max_blob_bytes}",
-                        identifier.clone_url,
-                        refspec,
-                    ],
-                    git_dir=self.path,
-                    abort_check=self._store_limit_exceeded,
-                )
-                self._enforce_store_limit()
-            except GitCommandError as exc:
-                if exc.code in {"git_resource_limit", "git_store_limit"}:
-                    raise
             self.git.run(["update-ref", cached, head_sha], git_dir=self.path)
             if self._ref_exists(pinned):
                 existing = self.git.run(

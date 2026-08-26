@@ -8,7 +8,12 @@ from typing import Any
 import pytest
 from build_fixture import SyntheticGitNetwork
 
-from fork_intelligence.adapters.git import BareNetworkStore, SafeGit, _namespace_branch
+from fork_intelligence.adapters.git import (
+    BareNetworkStore,
+    GitResult,
+    SafeGit,
+    _namespace_branch,
+)
 from fork_intelligence.config import Settings
 from fork_intelligence.errors import GitCommandError, PlatformError
 
@@ -360,3 +365,35 @@ def test_oversized_store_is_quarantined_and_partial_temp_files_are_removed(
     assert not temporary.exists()
     with pytest.raises(GitCommandError, match="quarantined"):
         store.initialize()
+
+
+def test_fetch_branch_retrieves_blobs_in_a_single_filtered_fetch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A blob:none fetch followed by a blob:limit fetch of the same commits is a
+    no-op: Git negotiation is commit-based, so once the commits are present the
+    second fetch transfers no blobs. Measured against pallets/flask on
+    2026-08-26 - 332 KB of bookkeeping and zero of 236 head-tree blobs. The
+    branch fetch must therefore request the blobs it needs the first time."""
+    settings = Settings(git_store_root=tmp_path)
+    store = BareNetworkStore("single-fetch-network", settings)
+    head = "a" * 40
+    fetches: list[list[str]] = []
+
+    def recording_run(args: list[str], **kwargs: Any) -> object:
+        if args and args[0] == "fetch":
+            fetches.append(args)
+            return GitResult(stdout=b"", stderr=b"")
+        if args and args[0] in {"rev-parse", "show-ref"}:
+            return GitResult(stdout=head.encode() + b"\n", stderr=b"")
+        return GitResult(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(store.git, "run", recording_run)
+
+    store.fetch_branch(
+        "00000000-0000-4000-8000-000000000000", 1, "octocat", "Hello-World", "main", head
+    )
+
+    assert len(fetches) == 1, "a second fetch of the same commits cannot backfill blobs"
+    assert f"--filter=blob:limit={settings.max_blob_bytes}" in fetches[0]
+    assert not any(arg == "--filter=blob:none" for arg in fetches[0])
