@@ -12,7 +12,7 @@ dependencies = [
   "pydantic-settings>=2.10,<3",
   "redis>=5,<7",
   "sqlalchemy>=2.0.41,<3",
-  "structlog>=25.4,<26",
+  "structlog>=25.4,<27",
   "uvicorn[standard]>=0.35,<1",
 ]
 
