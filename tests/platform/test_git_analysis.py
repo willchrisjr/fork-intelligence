@@ -397,3 +397,42 @@ def test_fetch_branch_retrieves_blobs_in_a_single_filtered_fetch(
     assert len(fetches) == 1, "a second fetch of the same commits cannot backfill blobs"
     assert f"--filter=blob:limit={settings.max_blob_bytes}" in fetches[0]
     assert not any(arg == "--filter=blob:none" for arg in fetches[0])
+
+
+def test_fetch_branch_reports_object_validation_rejection_distinctly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """fetch.fsckObjects rejects repositories carrying benign legacy artifacts -
+    pallets/flask (zeroPaddedFilemode) and psf/requests (badTimezone) both fail.
+    Under a partial-clone filter no fsck severity override or skipList reaches
+    index-pack, so this is unavoidable while validation stays on. It must at
+    least be distinguishable from a generic Git failure. See issue #50."""
+    store = BareNetworkStore("fsck-network", Settings(git_store_root=tmp_path))
+
+    def failing_run(args: list[str], **kwargs: Any) -> object:
+        if args and args[0] == "fetch":
+            raise GitCommandError(
+                "git_failed",
+                "Git operation failed",
+                details={
+                    "exit_code": 128,
+                    "stderr": (
+                        "error: object 0b404df8c030cdeaca7b373956c3a697efd32f78: "
+                        "zeroPaddedFilemode: contains zero-padded file modes\n"
+                        "fatal: fsck error in packed object\n"
+                    ),
+                },
+            )
+        return GitResult(stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(store.git, "run", failing_run)
+
+    with pytest.raises(GitCommandError) as caught:
+        store.fetch_branch(
+            "00000000-0000-4000-8000-000000000000", 1, "pallets", "flask", "main", "a" * 40
+        )
+
+    assert caught.value.code == "git_object_validation_failed"
+    assert caught.value.status_code == 422
+    findings = caught.value.details["fsck_findings"]
+    assert any("zeroPaddedFilemode" in finding for finding in findings)

@@ -301,6 +301,14 @@ class BareNetworkStore:
                     "Git network store exceeded its configured hard size cap",
                     status_code=413,
                 ) from exc
+            findings = _fsck_findings(exc)
+            if findings:
+                raise GitCommandError(
+                    "git_object_validation_failed",
+                    "Repository history failed Git object validation and cannot be analyzed",
+                    status_code=422,
+                    details={"fsck_findings": findings},
+                ) from exc
             raise
         finally:
             if self.path.exists():
@@ -524,6 +532,27 @@ class BareNetworkStore:
         if deadline is None:
             return self.git.run(args, git_dir=self.path, stdin=stdin)
         return self._run_before_deadline(args, deadline, stdin=stdin)
+
+
+def _fsck_findings(exc: GitCommandError) -> list[str]:
+    """Extract fsck rejection reasons from a failed fetch.
+
+    Object validation is fatal under a partial-clone filter: no
+    fetch.fsck.<msg-id> override and no skipList reaches index-pack, verified
+    against Git 2.55.0. Established repositories carrying benign legacy
+    artifacts are therefore rejected outright - pallets/flask
+    (zeroPaddedFilemode) and psf/requests (badTimezone) among them. Classify
+    the rejection so it is disclosed rather than surfacing as a generic Git
+    failure. See issue #50.
+    """
+    stderr = str(exc.details.get("stderr", ""))
+    if "fsck error" not in stderr:
+        return []
+    findings: list[str] = []
+    for line in stderr.splitlines():
+        if line.startswith("error: object ") and ": " in line:
+            findings.append(line.removeprefix("error: object ").strip())
+    return findings
 
 
 def _validate_ref_component(value: str) -> None:
