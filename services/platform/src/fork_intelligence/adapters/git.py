@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -14,6 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import BinaryIO
 
+from fork_intelligence.adapters.git_fsck_wrapper import FSCK_WARN_MSG_IDS
 from fork_intelligence.config import Settings, get_settings
 from fork_intelligence.domain.files import summarize_files
 from fork_intelligence.domain.repository_input import parse_repository_identifier
@@ -21,6 +24,82 @@ from fork_intelligence.errors import GitCommandError, PlatformError
 
 _REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,250}$")
 _SHA = re.compile(r"^[0-9a-f]{40,64}$")
+_overlay_lock = threading.Lock()
+_overlay_dir: Path | None = None
+
+
+def _is_shell_script(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(2) == b"#!"
+    except OSError:
+        return True
+
+
+def _git_core_exec_path() -> Path:
+    candidates: list[Path] = []
+    which = shutil.which("git")
+    if which:
+        candidates.append(Path(which))
+    for fallback in ("/usr/bin/git", "/usr/local/bin/git"):
+        path = Path(fallback)
+        if path not in candidates:
+            candidates.append(path)
+    for candidate in candidates:
+        if (
+            not candidate.is_file()
+            or not os.access(candidate, os.X_OK)
+            or _is_shell_script(candidate)
+        ):
+            continue
+        try:
+            result = subprocess.run(  # noqa: S603
+                [str(candidate), "--exec-path"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        exec_path = Path(result.stdout.strip())
+        if result.returncode == 0 and exec_path.is_dir():
+            return exec_path
+    raise PlatformError("git_missing", "Git exec-path could not be resolved")
+
+
+def _git_exec_overlay() -> Path:
+    """GIT_EXEC_PATH overlay whose ``git`` injects fsck warn spec into index-pack.
+
+    Filtered fetches (``--filter=blob:*``) set from_promisor, so fetch-pack
+    runs ``index-pack --fsck-objects`` without the ``fetch.fsck.<msg-id>``
+    spec. Git locates that child via GIT_EXEC_PATH, which it prepends to
+    PATH — a PATH-only wrapper is skipped. Overlay every git-core helper
+    and replace ``git`` / ``git-index-pack`` with the rewrite launcher.
+    """
+    global _overlay_dir
+    with _overlay_lock:
+        if _overlay_dir is not None and (_overlay_dir / "git").is_file():
+            return _overlay_dir
+        exec_path = _git_core_exec_path()
+        overlay = Path(tempfile.mkdtemp(prefix="fork-intelligence-git-exec-"))
+        wrapper_source = Path(__file__).with_name("git_fsck_wrapper.py")
+        launcher = overlay / "git"
+        launcher.write_text(
+            f"#!{sys.executable}\n"
+            "import runpy\n"
+            f"runpy.run_path({str(wrapper_source)!r}, run_name='__main__')\n",
+            encoding="utf-8",
+        )
+        launcher.chmod(0o755)
+        (overlay / "git-index-pack").symlink_to(launcher)
+        for entry in exec_path.iterdir():
+            destination = overlay / entry.name
+            if destination.exists() or destination.is_symlink():
+                continue
+            destination.symlink_to(entry)
+        _overlay_dir = overlay
+        return overlay
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,12 +156,20 @@ class SafeGit:
             "-c",
             "fetch.fsckObjects=true",
         ]
+        for msg_id in FSCK_WARN_MSG_IDS:
+            command.extend(["-c", f"fetch.fsck.{msg_id}=warn"])
         if git_dir is not None:
             command.extend(["--git-dir", str(git_dir.resolve())])
         command.extend(args)
+        real_git = shutil.which("git")
+        if not real_git:
+            raise PlatformError("git_missing", "Git executable was not found on PATH")
+        overlay = _git_exec_overlay()
         with tempfile.TemporaryDirectory(prefix="fork-intelligence-git-home-") as home:
             env = {
-                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "PATH": os.pathsep.join(
+                    [str(overlay), os.environ.get("PATH", "/usr/bin:/bin")],
+                ),
                 "HOME": home,
                 "GIT_CONFIG_NOSYSTEM": "1",
                 "GIT_TERMINAL_PROMPT": "0",
@@ -90,6 +177,8 @@ class SafeGit:
                 "GIT_PROTOCOL_FROM_USER": "0",
                 "GIT_NO_LAZY_FETCH": "1",
                 "LC_ALL": "C",
+                "GIT_EXEC_PATH": str(overlay),
+                "FORK_INTELLIGENCE_REAL_GIT": real_git,
             }
             effective_timeout = self.settings.git_timeout_seconds if timeout is None else timeout
             if effective_timeout <= 0:
@@ -537,13 +626,12 @@ class BareNetworkStore:
 def _fsck_findings(exc: GitCommandError) -> list[str]:
     """Extract fsck rejection reasons from a failed fetch.
 
-    Object validation is fatal under a partial-clone filter: no
-    fetch.fsck.<msg-id> override and no skipList reaches index-pack, verified
-    against Git 2.55.0. Established repositories carrying benign legacy
-    artifacts are therefore rejected outright - pallets/flask
-    (zeroPaddedFilemode) and psf/requests (badTimezone) among them. Classify
-    the rejection so it is disclosed rather than surfacing as a generic Git
-    failure. See issue #50.
+    fetch.fsck.<msg-id> does not reach index-pack under a partial-clone
+    filter. SafeGit injects ``--fsck-objects=<msg-id>=warn`` for
+    zeroPaddedFilemode and badTimezone via a GIT_EXEC_PATH git wrapper, so
+    those flask/requests-class artifacts become warnings. Remaining fsck
+    failures are still classified rather than surfacing as a generic Git
+    error. See issue #50.
     """
     stderr = str(exc.details.get("stderr", ""))
     if "fsck error" not in stderr:

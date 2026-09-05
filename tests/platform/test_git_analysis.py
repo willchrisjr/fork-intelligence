@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import hashlib
+import socket
 import subprocess
 import time
+import zlib
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +17,10 @@ from fork_intelligence.adapters.git import (
     GitResult,
     SafeGit,
     _namespace_branch,
+)
+from fork_intelligence.adapters.git_fsck_wrapper import (
+    FSCK_WARN_SPEC,
+    apply_index_pack_fsck_warn_overrides,
 )
 from fork_intelligence.config import Settings
 from fork_intelligence.errors import GitCommandError, PlatformError
@@ -235,6 +243,13 @@ def test_safe_git_uses_sterile_environment_and_no_shell(
     assert environment["GIT_TERMINAL_PROMPT"] == "0"
     assert environment["GIT_NO_LAZY_FETCH"] == "1"
     assert "GIT_CONFIG_GLOBAL" not in environment
+    assert "fetch.fsckObjects=true" in command
+    assert "fetch.fsck.zeroPaddedFilemode=warn" in command
+    assert "fetch.fsck.badTimezone=warn" in command
+    assert not any("skipList" in arg for arg in command)
+    assert "skipList" not in " ".join(str(value) for value in environment.values())
+    assert environment.get("GIT_EXEC_PATH")
+    assert environment.get("FORK_INTELLIGENCE_REAL_GIT")
 
 
 def test_safe_git_enforces_output_limit(tmp_path: Path) -> None:
@@ -402,11 +417,12 @@ def test_fetch_branch_retrieves_blobs_in_a_single_filtered_fetch(
 def test_fetch_branch_reports_object_validation_rejection_distinctly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """fetch.fsckObjects rejects repositories carrying benign legacy artifacts -
-    pallets/flask (zeroPaddedFilemode) and psf/requests (badTimezone) both fail.
-    Under a partial-clone filter no fsck severity override or skipList reaches
-    index-pack, so this is unavoidable while validation stays on. It must at
-    least be distinguishable from a generic Git failure. See issue #50."""
+    """Dangerous object-validation failures stay classified, not opaque git_failed.
+
+    Legacy flask/requests-class artifacts are demoted to warnings on the
+    filtered fetch path. Remaining fsck errors still surface as
+    git_object_validation_failed (issue #51) rather than a generic Git failure.
+    """
     store = BareNetworkStore("fsck-network", Settings(git_store_root=tmp_path))
 
     def failing_run(args: list[str], **kwargs: Any) -> object:
@@ -418,7 +434,7 @@ def test_fetch_branch_reports_object_validation_rejection_distinctly(
                     "exit_code": 128,
                     "stderr": (
                         "error: object 0b404df8c030cdeaca7b373956c3a697efd32f78: "
-                        "zeroPaddedFilemode: contains zero-padded file modes\n"
+                        "missingEmail: invalid author/committer line - missing email\n"
                         "fatal: fsck error in packed object\n"
                     ),
                 },
@@ -435,4 +451,208 @@ def test_fetch_branch_reports_object_validation_rejection_distinctly(
     assert caught.value.code == "git_object_validation_failed"
     assert caught.value.status_code == 422
     findings = caught.value.details["fsck_findings"]
-    assert any("zeroPaddedFilemode" in finding for finding in findings)
+    assert any("missingEmail" in finding for finding in findings)
+
+
+def test_index_pack_fsck_warn_overrides_rewrite_bare_fsck_objects_flag() -> None:
+    rewritten = apply_index_pack_fsck_warn_overrides(
+        ["index-pack", "--stdin", "--promisor", "--fsck-objects"]
+    )
+
+    assert rewritten == [
+        "index-pack",
+        "--stdin",
+        "--promisor",
+        f"--fsck-objects={FSCK_WARN_SPEC}",
+    ]
+    assert "zeroPaddedFilemode=warn" in FSCK_WARN_SPEC
+    assert "badTimezone=warn" in FSCK_WARN_SPEC
+    assert "skipList" not in " ".join(rewritten)
+
+
+def test_index_pack_fsck_warn_overrides_preserve_unrelated_arguments() -> None:
+    args = ["fetch", "--no-tags", "--filter=blob:limit=2000000", "https://github.com/x/y.git"]
+
+    assert apply_index_pack_fsck_warn_overrides(args) == args
+
+
+def test_index_pack_fsck_warn_overrides_merge_into_existing_typed_flag() -> None:
+    rewritten = apply_index_pack_fsck_warn_overrides(
+        ["index-pack", "--fsck-objects=missingEmail=error"]
+    )
+
+    assert rewritten[1].startswith("--fsck-objects=")
+    assert "missingEmail=error" in rewritten[1]
+    assert "zeroPaddedFilemode=warn" in rewritten[1]
+    assert "badTimezone=warn" in rewritten[1]
+
+
+def _index_pack_accepts_typed_fsck_objects() -> bool:
+    result = subprocess.run(
+        ["git", "index-pack", "-h"],  # noqa: S607 - intentional Git lookup.
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return "fsck-objects[=" in f"{result.stdout}{result.stderr}"
+
+
+def _store_git_object(git_dir: Path, object_type: str, body: bytes) -> str:
+    payload = f"{object_type} {len(body)}\0".encode() + body
+    digest = hashlib.sha1(payload).hexdigest()  # noqa: S324 - Git object ID
+    path = git_dir / "objects" / digest[:2] / digest[2:]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(zlib.compress(payload))
+    return digest
+
+
+def _build_legacy_artifact_repo(root: Path) -> Path:
+    """Bare repo with flask/requests-class trees plus a still-fatal missingEmail commit."""
+    source = root / "legacy.git"
+    subprocess.run(  # noqa: S603 - fixed test-only Git argv.
+        ["git", "init", "--bare", str(source)],  # noqa: S607 - intentional Git lookup.
+        check=True,
+        capture_output=True,
+    )
+    blob_sha = _store_git_object(source, "blob", b"hello\n")
+    padded_tree = _store_git_object(
+        source, "tree", b"0100644 hello.txt\0" + bytes.fromhex(blob_sha)
+    )
+    normal_tree = _store_git_object(source, "tree", b"100644 hello.txt\0" + bytes.fromhex(blob_sha))
+
+    def commit(tree: str, *, author: str, message: str) -> str:
+        body = (f"tree {tree}\nauthor {author}\ncommitter {author}\n\n{message}\n").encode()
+        return _store_git_object(source, "commit", body)
+
+    padded = commit(
+        padded_tree,
+        author="Fixture <fixture@example.invalid> 1577836800 +0000",
+        message="zero padded",
+    )
+    timezone = commit(
+        normal_tree,
+        author="Fixture <fixture@example.invalid> 1577836800 UTC",
+        message="bad timezone",
+    )
+    missing_email = commit(
+        normal_tree,
+        author="NoEmail 1577836800 +0000",
+        message="missing email",
+    )
+    git_dir = ["git", "--git-dir", str(source)]
+    subprocess.run(  # noqa: S603 - fixed test-only Git argv.
+        [*git_dir, "update-ref", "refs/heads/padded", padded],
+        check=True,
+    )
+    subprocess.run(  # noqa: S603 - fixed test-only Git argv.
+        [*git_dir, "update-ref", "refs/heads/timezone", timezone],
+        check=True,
+    )
+    subprocess.run(  # noqa: S603 - fixed test-only Git argv.
+        [*git_dir, "update-ref", "refs/heads/missing-email", missing_email],
+        check=True,
+    )
+    subprocess.run(  # noqa: S603 - fixed test-only Git argv.
+        [*git_dir, "config", "uploadpack.allowFilter", "true"],
+        check=True,
+    )
+    return source
+
+
+def _serve_git_repo(source: Path) -> Iterator[str]:
+    parent = source.parent
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    log_path = parent / "git-daemon.log"
+    daemon = subprocess.Popen(  # noqa: S603 - fixed test-only Git argv.
+        [  # noqa: S607 - intentional Git lookup.
+            "git",
+            "daemon",
+            "daemon",
+            "--reuseaddr",
+            "--listen=127.0.0.1",
+            f"--port={port}",
+            f"--base-path={parent}",
+            "--export-all",
+            "--informative-errors",
+            str(source),
+        ],
+        stdout=log_path.open("w"),
+        stderr=subprocess.STDOUT,
+    )
+    url = f"git://127.0.0.1:{port}/{source.name}"
+    try:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if daemon.poll() is not None:
+                raise RuntimeError(f"git daemon exited: {log_path.read_text()[-500:]}")
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+                client.settimeout(0.1)
+                if client.connect_ex(("127.0.0.1", port)) == 0:
+                    break
+            time.sleep(0.05)
+        else:
+            raise RuntimeError("git daemon did not accept connections")
+        yield url
+    finally:
+        daemon.terminate()
+        try:
+            daemon.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            daemon.kill()
+            daemon.wait(timeout=2)
+
+
+def _filtered_fetch(tmp_path: Path, url: str, refspec: str) -> GitResult:
+    settings = Settings(git_store_root=tmp_path, git_timeout_seconds=30)
+    dest = tmp_path / "dest.git"
+    safe_git = SafeGit(settings)
+    safe_git.run(["init", "--bare", str(dest)])
+    return safe_git.run(
+        [
+            "fetch",
+            "--no-tags",
+            "--no-recurse-submodules",
+            f"--filter=blob:limit={settings.max_blob_bytes}",
+            url,
+            refspec,
+        ],
+        git_dir=dest,
+    )
+
+
+def test_filtered_fetch_demotes_zero_padded_filemode_to_a_warning(tmp_path: Path) -> None:
+    if not _index_pack_accepts_typed_fsck_objects():
+        pytest.skip("git index-pack does not accept --fsck-objects=<msg-id>=<severity>")
+    source = _build_legacy_artifact_repo(tmp_path)
+    for url in _serve_git_repo(source):
+        result = _filtered_fetch(tmp_path, url, "+refs/heads/padded:refs/heads/padded")
+
+    assert "zeroPaddedFilemode" in result.stderr.decode("utf-8", errors="replace")
+    assert b"fatal: fsck error" not in result.stderr
+
+
+def test_filtered_fetch_demotes_bad_timezone_to_a_warning(tmp_path: Path) -> None:
+    if not _index_pack_accepts_typed_fsck_objects():
+        pytest.skip("git index-pack does not accept --fsck-objects=<msg-id>=<severity>")
+    source = _build_legacy_artifact_repo(tmp_path)
+    for url in _serve_git_repo(source):
+        result = _filtered_fetch(tmp_path, url, "+refs/heads/timezone:refs/heads/timezone")
+
+    stderr = result.stderr.decode("utf-8", errors="replace")
+    assert "badTimezone" in stderr
+    assert "fatal: fsck error" not in stderr
+
+
+def test_filtered_fetch_keeps_dangerous_fsck_checks_fatal(tmp_path: Path) -> None:
+    if not _index_pack_accepts_typed_fsck_objects():
+        pytest.skip("git index-pack does not accept --fsck-objects=<msg-id>=<severity>")
+    source = _build_legacy_artifact_repo(tmp_path)
+    with pytest.raises(GitCommandError) as caught:
+        for url in _serve_git_repo(source):
+            _filtered_fetch(tmp_path, url, "+refs/heads/missing-email:refs/heads/missing-email")
+
+    assert caught.value.code == "git_failed"
+    assert "missingEmail" in str(caught.value.details.get("stderr", ""))
+    assert "skipList" not in str(caught.value.details.get("stderr", ""))
