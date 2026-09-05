@@ -569,7 +569,6 @@ def _serve_git_repo(source: Path) -> Iterator[str]:
         [  # noqa: S607 - intentional Git lookup.
             "git",
             "daemon",
-            "daemon",
             "--reuseaddr",
             "--listen=127.0.0.1",
             f"--port={port}",
