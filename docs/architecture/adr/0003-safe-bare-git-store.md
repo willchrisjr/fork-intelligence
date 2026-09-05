@@ -17,6 +17,11 @@ GitHub remotes through fixed argv arrays, start with `blob:none`, and materializ
 bounded blobs only for deep analysis. Disable hooks, unsafe protocols, recursive
 submodules, credential prompts, and inherited system/user configuration. Never
 checkout or execute analyzed content. Do not use alternates in the MVP.
+Object validation stays on (`fetch.fsckObjects=true`). Two historical fsck
+message IDs — `zeroPaddedFilemode` and `badTimezone` — are demoted to warnings
+so established repositories remain fetchable. Under partial-clone filters Git
+does not apply `fetch.fsck.<msg-id>` to index-pack; the adapter injects the
+same spec through `index-pack --fsck-objects=`. Other fsck checks stay fatal.
 
 ## Consequences
 

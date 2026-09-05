@@ -43,3 +43,9 @@
   reviewed Dependabot updates. Public visibility enables secret scanning, push
   protection, and an active `main` ruleset. Hosted CI becomes required by that
   ruleset after the account billing lock is cleared and the check passes.
+- **D016 - Filtered fetch fsck warns:** keep `fetch.fsckObjects=true`. Demote
+  `zeroPaddedFilemode` and `badTimezone` to warn. Git 2.55 ignores
+  `fetch.fsck.<msg-id>` once `--filter` is set because fetch-pack passes a bare
+  `--fsck-objects` to index-pack. A GIT_EXEC_PATH overlay rewrites that child
+  argv to `--fsck-objects=zeroPaddedFilemode=warn,badTimezone=warn`. Do not use
+  `fetch.fsck.skipList`. Requires Git 2.45+ (`--fsck-objects=` types).

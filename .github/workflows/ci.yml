@@ -43,6 +43,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - name: Install Git 2.45+ for filtered index-pack fsck overrides
+        run: |
+          if ! git index-pack -h 2>&1 | grep -q 'fsck-objects\[='; then
+            sudo apt-get update
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+            sudo add-apt-repository -y ppa:git-core/ppa
+            sudo apt-get update
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y git
+          fi
+          git --version
+          git index-pack -h 2>&1 | grep -q 'fsck-objects\[='
       - name: Install pnpm
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
         with:
