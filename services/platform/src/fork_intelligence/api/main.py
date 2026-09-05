@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from collections.abc import Awaitable, Callable
 from time import time
-from typing import cast
 
 import structlog
 import uvicorn
@@ -70,7 +69,7 @@ async def request_context(
             redis = Redis.from_url(settings.redis_url, socket_connect_timeout=1, socket_timeout=1)
             bucket = int(time() // 60)
             key = f"fork-intelligence:admission:{client_host}:{bucket}"
-            count = cast(int, redis.incr(key))
+            count = redis.incr(key)
             if count == 1:
                 redis.expire(key, 120)
             redis.close()
