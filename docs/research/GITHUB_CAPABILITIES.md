@@ -1,7 +1,7 @@
 # GitHub Capability Research
 
 Status: architecture baseline
-Accessed: 2026-07-13
+Accessed: 2026-09-08
 Primary sources: GitHub documentation listed in [SOURCE_REGISTER.md](SOURCE_REGISTER.md)
 
 ## Decisions
@@ -61,6 +61,28 @@ Counts in repository responses are indicators, not proof of quality. In
 particular, watchers/stargazers aliases and timestamps must retain their exact
 source field; `updated_at` and `pushed_at` are not interchangeable with a latest
 meaningful commit.
+
+### Star counts and privacy-safe star history (2026-09)
+
+Identity-bearing stargazer *listing* (`GET /repos/{owner}/{repo}/stargazers`)
+was restricted to admins and collaborators (changelog 2026-06-30) to reduce
+spam abuse. Do not design FI features that require enumerating stargazer
+identities for public analysis.
+
+For growth and totals without identities, use:
+
+- `GET /repos/{owner}/{repo}/stargazers/count` → `{ "count": <int> }` current
+  star total (excludes users who later unstarred).
+- `GET /repos/{owner}/{repo}/stargazers/history` → weekly buckets
+  `{ "week": <unix>, "total": <int>, "days": [Sun..Sat] }`, newest week first;
+  `per_page` max 30, `page` max 100; zero-star weeks included; week/day
+  boundaries are not guaranteed UTC-aligned (changelog 2026-09-04).
+
+Public repositories support **anonymous** access to these aggregate routes
+(verified Lab probe 2026-09-08). They share the ordinary REST **core**
+rate-limit bucket. Prefer them for shortlist **growth curves** and refreshed
+totals; keep `stargazers_count` on repository objects as a snapshot indicator
+with exact field provenance. Never treat star velocity as proof of quality.
 
 ### Pagination and conditional requests
 
