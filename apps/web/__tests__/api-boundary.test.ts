@@ -325,11 +325,12 @@ describe("API boundary mapping", () => {
     expect(detail.starGrowth?.count).not.toBe(9999);
     expect(detail.evidence[0]).toMatchObject({
       title: "Privacy-safe star growth",
-      summary:
-        "Current star count from GitHub's identity-free count endpoint.",
+      summary: "Current star count from GitHub's identity-free count endpoint.",
       provenance: "github",
     });
-    expect(detail.evidence[0]?.title).not.toBe("Git history and patch analysis");
+    expect(detail.evidence[0]?.title).not.toBe(
+      "Git history and patch analysis",
+    );
   });
 });
 

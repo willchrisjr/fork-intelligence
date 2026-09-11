@@ -43,8 +43,7 @@ export function StarGrowthPanel({
         >
           {growth.weeklyCreated.map((total, index) => {
             const newest = index === growth.weeklyCreated.length - 1;
-            const height =
-              total <= 0 ? 0 : Math.max(2, (total / peak) * 100);
+            const height = total <= 0 ? 0 : Math.max(2, (total / peak) * 100);
             return (
               <span
                 key={`${index}-${total}`}
