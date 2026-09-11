@@ -3,6 +3,7 @@
 import { AlertTriangle, ExternalLink, X } from "lucide-react";
 import Link from "next/link";
 import { Confidence } from "./confidence";
+import { StarGrowthPanel } from "./star-growth-panel";
 import {
   classificationLabel,
   formatDateTime,
@@ -101,6 +102,7 @@ export function EvidenceInspector({
               ))}
             </ul>
           </section>
+          <StarGrowthPanel growth={detail.starGrowth} />
           <section className="inspector-section">
             <h3>Score inputs</h3>
             <table className="score-table">

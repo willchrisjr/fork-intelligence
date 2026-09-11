@@ -81,6 +81,12 @@ class FakeRouter:
             raise self._forks_error
         return iter(())
 
+    def get_stargazer_count(self, owner: str, name: str) -> dict[str, int]:
+        return {"count": 0}
+
+    def get_stargazer_history(self, owner: str, name: str, **_: object) -> list[dict[str, int]]:
+        return []
+
     def close(self) -> None:
         self.closed = True
 

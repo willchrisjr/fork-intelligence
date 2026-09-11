@@ -24,6 +24,10 @@ from fork_intelligence.domain.classification import classify_repository
 from fork_intelligence.domain.clustering import build_vector, cluster_vectors
 from fork_intelligence.domain.repository_input import parse_repository_identifier
 from fork_intelligence.domain.scoring import calculate_scores
+from fork_intelligence.domain.star_growth import (
+    STAR_GROWTH_HISTORY_WEEKS,
+    summarize_star_growth,
+)
 from fork_intelligence.errors import GitHubError, PlatformError
 from fork_intelligence.models import (
     AnalysisRun,
@@ -398,7 +402,77 @@ class AnalysisPipeline:
         selected = {snapshot.repository_id for snapshot in ranked[:shortlist_cap]}
         for snapshot in snapshots:
             snapshot.shortlisted = snapshot.repository_id in selected
+        for snapshot in snapshots:
+            if snapshot.repository_id not in selected:
+                continue
+            self._check_cancelled(analysis)
+            repository = self.session.get(Repository, snapshot.repository_id)
+            if repository is None or repository.disabled:
+                continue
+            self._record_star_growth(analysis, snapshot, repository)
         self._finish_stage(analysis, "shortlist", {"shortlisted": len(selected)})
+
+    def _record_star_growth(
+        self,
+        analysis: AnalysisRun,
+        snapshot: RepositorySnapshot,
+        repository: Repository,
+    ) -> None:
+        """Attach identity-free star count and weekly created-star totals.
+
+        Two REST calls per shortlisted fork: ``/stargazers/count`` and
+        ``/stargazers/history``. Listing stargazers is never requested. A
+        per-repository failure is missing data; provider exhaustion still
+        stops the run.
+        """
+        try:
+            count_payload = self.github.get_stargazer_count(repository.owner, repository.name)
+            history = self.github.get_stargazer_history(
+                repository.owner, repository.name, per_page=STAR_GROWTH_HISTORY_WEEKS
+            )
+        except GitHubError as exc:
+            if exc.code in PROVIDER_EXHAUSTED_CODES:
+                raise
+            self._append_missing(
+                snapshot,
+                "Privacy-safe star history was unavailable from GitHub",
+            )
+            return
+        summary = summarize_star_growth(count_payload["count"], history)
+        snapshot.metrics = {**snapshot.metrics, "star_growth": summary}
+        self.session.add(
+            EvidenceItem(
+                analysis_id=analysis.id,
+                repository_id=repository.id,
+                evidence_type="calculated_metric",
+                source="github",
+                source_url=repository.html_url,
+                payload={
+                    "title": "Privacy-safe star growth",
+                    "summary": (
+                        "Current star count from GitHub's identity-free count endpoint. "
+                        "Weekly totals are stars created that week, not a running count, "
+                        "and are not a substitute for the current total."
+                    ),
+                    **summary,
+                },
+                provenance={
+                    "method": "github-rest-stargazers-aggregates",
+                    "api_version": self.settings.github_api_version,
+                    "retrieved_at": datetime.now(UTC).isoformat(),
+                    "endpoints": ["stargazers/count", "stargazers/history"],
+                },
+            )
+        )
+
+    @staticmethod
+    def _append_missing(snapshot: RepositorySnapshot, message: str) -> None:
+        existing = [
+            item for item in (snapshot.metrics.get("missing_data") or []) if isinstance(item, str)
+        ]
+        if message not in existing:
+            existing.append(message)
+        snapshot.metrics = {**snapshot.metrics, "missing_data": existing}
 
     def _structural(self, analysis: AnalysisRun) -> None:
         if self._stage_complete(analysis, "structural"):

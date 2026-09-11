@@ -253,6 +253,7 @@ describe("API boundary mapping", () => {
     );
     const detail = await api.getFork("analysis-1", "fork-1");
     expect(detail.originalWorkPercent).toBe(63);
+    expect(detail.starGrowth).toBeUndefined();
     expect(detail.evidence[0]).toMatchObject({
       title: "Git history and patch analysis",
       provenance: "git",
@@ -260,6 +261,50 @@ describe("API boundary mapping", () => {
     expect(detail.evidence[0]?.summary).toContain(
       "4 commits ahead and 1 behind",
     );
+  });
+
+  it("maps identity-free star growth onto fork detail only", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "fork-1",
+            owner: "pallets",
+            name: "flask",
+            html_url: "https://github.com/pallets/flask",
+            default_branch: "main",
+            is_fork: false,
+            depth: "metadata",
+            metadata: {},
+            metrics: {
+              stars: 9999,
+              star_growth: {
+                count: 1284,
+                created_last_4w: 385,
+                created_last_12w: 460,
+                weekly_created: [10, 12, 350],
+                weeks_observed: 3,
+                current_week_partial: true,
+              },
+            },
+            classification: { label: "unknown", confidence: 0.2, reasons: [] },
+            scores: [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const detail = await api.getFork("analysis-1", "fork-1");
+    expect(detail.starGrowth).toEqual({
+      count: 1284,
+      createdLast4Weeks: 385,
+      createdLast12Weeks: 460,
+      weeklyCreated: [10, 12, 350],
+      weeksObserved: 3,
+      currentWeekPartial: true,
+    });
+    expect(detail.starGrowth?.count).not.toBe(9999);
   });
 });
 

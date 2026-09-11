@@ -12,6 +12,7 @@ import {
 import { AnalysisShell } from "./analysis-shell";
 import { Confidence } from "./confidence";
 import { BranchPlanTable } from "@/components/branch-plan-table";
+import { StarGrowthPanel } from "@/components/star-growth-panel";
 import { api } from "@/lib/api";
 import {
   classificationLabel,
@@ -146,6 +147,11 @@ export function ForkDetailPage({
                 </div>
               </dl>
             </section>
+            {fork.starGrowth ? (
+              <section className="section-panel">
+                <StarGrowthPanel growth={fork.starGrowth} heading="h2" />
+              </section>
+            ) : null}
             <section className="section-panel">
               <h2>Score components</h2>
               <table className="score-table wide">

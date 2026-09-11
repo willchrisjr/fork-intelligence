@@ -19,6 +19,7 @@ import type {
   MaintenanceState,
   ProviderAccess,
   ScoreComponent,
+  StarGrowth,
 } from "./types";
 import type { components as ContractComponents } from "@fork-intelligence/contracts";
 
@@ -483,6 +484,21 @@ function mapForkDetail(value: unknown): ForkDetail {
         }
       : undefined,
     branchPlan: mapBranchPlanEntries(raw.branch_plan),
+    starGrowth: mapStarGrowth(metrics.star_growth),
+  };
+}
+
+function mapStarGrowth(value: unknown): StarGrowth | undefined {
+  const raw = record(value);
+  if (raw.count == null && raw.weekly_created == null) return undefined;
+  const weeklyCreated = array(raw.weekly_created).map((item) => number(item));
+  return {
+    count: number(raw.count),
+    createdLast4Weeks: number(raw.created_last_4w),
+    createdLast12Weeks: number(raw.created_last_12w),
+    weeklyCreated,
+    weeksObserved: number(raw.weeks_observed, weeklyCreated.length),
+    currentWeekPartial: raw.current_week_partial !== false,
   };
 }
 

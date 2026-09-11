@@ -53,6 +53,14 @@ export const forkOne = {
     cluster_id: "cluster-runtime",
     cluster_label: "Runtime reliability",
     cluster_confidence: 0.88,
+    star_growth: {
+      count: 1284,
+      created_last_4w: 385,
+      created_last_12w: 460,
+      weekly_created: [8, 10, 9, 11, 7, 12, 10, 8, 9, 14, 12, 350],
+      weeks_observed: 12,
+      current_week_partial: true,
+    },
     missing_data: [],
   },
   classification: {

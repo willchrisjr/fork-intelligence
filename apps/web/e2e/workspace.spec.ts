@@ -134,6 +134,11 @@ test.describe("analysis workspace", () => {
     await expect(inspector).toContainText(
       "Nineteen patches are not present upstream.",
     );
+    await expect(inspector).toContainText("Star growth");
+    await expect(inspector).toContainText("1,284");
+    await expect(inspector).toContainText("Created last 4 weeks");
+    await expect(inspector).toContainText("not proof of quality");
+    await expect(inspector).toContainText("Newest week may be incomplete");
     await inspector
       .getByRole("link", { name: "Open full fork details" })
       .click();
@@ -145,6 +150,9 @@ test.describe("analysis workspace", () => {
     await expect(
       page.getByRole("heading", { name: "History relationship" }),
     ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Star growth" }),
+    ).toContainText("1,284");
     await expect(page.getByText("f00dbabe1234567890")).toBeVisible();
   });
 

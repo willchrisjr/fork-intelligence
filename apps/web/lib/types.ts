@@ -144,6 +144,16 @@ export interface EvidenceCounts {
   releases: number;
 }
 
+/** Identity-free star totals for the evidence panel. Not a ranking signal. */
+export interface StarGrowth {
+  count: number;
+  createdLast4Weeks: number;
+  createdLast12Weeks: number;
+  weeklyCreated: number[];
+  weeksObserved: number;
+  currentWeekPartial: boolean;
+}
+
 export interface ForkSummary {
   id: string;
   fullName: string;
@@ -203,6 +213,8 @@ export interface ForkDetail extends ForkSummary {
   cluster?: { id: string; label: string; confidence: number };
   /** Every branch candidate considered for this repository, in plan order. */
   branchPlan: BranchPlanEntry[];
+  /** Present only when privacy-safe star history was retrieved. */
+  starGrowth?: StarGrowth;
 }
 
 export interface ComparisonRepository {

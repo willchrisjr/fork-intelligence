@@ -51,6 +51,55 @@ class GitHubClient:
     def __exit__(self, *_: object) -> None:
         self.close()
 
+    def get_stargazer_count(self, owner: str, name: str) -> dict[str, int]:
+        """Current star total without enumerating stargazer identities."""
+        response = self._request(
+            "GET",
+            f"/repos/{_path_segment(owner)}/{_path_segment(name)}/stargazers/count",
+        )
+        data = response.json()
+        if not isinstance(data, dict) or "count" not in data:
+            raise GitHubError(
+                "invalid_github_response",
+                "Expected a stargazer count object",
+                status_code=502,
+            )
+        return {"count": int(data["count"])}
+
+    def get_stargazer_history(
+        self, owner: str, name: str, *, per_page: int = 12
+    ) -> list[dict[str, int]]:
+        """Weekly created-star buckets, newest first. Identity-free aggregates only."""
+        response = self._request(
+            "GET",
+            f"/repos/{_path_segment(owner)}/{_path_segment(name)}/stargazers/history",
+            params={"per_page": min(max(per_page, 1), 30), "page": 1},
+        )
+        raw = response.json()
+        if not isinstance(raw, list):
+            raise GitHubError(
+                "invalid_github_response",
+                "Expected a list of stargazer history weeks",
+                status_code=502,
+            )
+        weeks: list[dict[str, int]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                raise GitHubError(
+                    "invalid_github_response",
+                    "Expected stargazer history week objects",
+                    status_code=502,
+                )
+            # Keep only the aggregate fields. Extra identity-bearing keys, if a
+            # future schema added them, must not be persisted or returned.
+            weeks.append(
+                {
+                    "week": int(item.get("week") or 0),
+                    "total": int(item.get("total") or 0),
+                }
+            )
+        return weeks
+
     def get_repository(self, owner: str, name: str, *, etag: str | None = None) -> dict[str, Any]:
         response = self._request(
             "GET", f"/repos/{_path_segment(owner)}/{_path_segment(name)}", etag=etag
