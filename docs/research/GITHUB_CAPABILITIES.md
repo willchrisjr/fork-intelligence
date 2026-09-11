@@ -1,7 +1,7 @@
 # GitHub Capability Research
 
 Status: architecture baseline
-Accessed: 2026-07-13
+Accessed: 2026-09-08
 Primary sources: GitHub documentation listed in [SOURCE_REGISTER.md](SOURCE_REGISTER.md)
 
 ## Decisions
@@ -61,6 +61,33 @@ Counts in repository responses are indicators, not proof of quality. In
 particular, watchers/stargazers aliases and timestamps must retain their exact
 source field; `updated_at` and `pushed_at` are not interchangeable with a latest
 meaningful commit.
+
+### Star counts and privacy-safe star history (2026-09)
+
+Identity-bearing stargazer listing (`GET /repos/{owner}/{repo}/stargazers`) is
+restricted to admins and collaborators (changelog 2026-06-30). Do not design
+public analysis that enumerates stargazer identities.
+
+For growth and totals without identities, use the aggregate routes announced
+in changelog 2026-09-04. They are available on the pinned `2026-03-10` REST
+version; do not treat them as a reason to change the pin.
+
+- `GET /repos/{owner}/{repo}/stargazers/count` → `{ "count": <int> }`: current
+  star total. Users who later unstarred are excluded.
+- `GET /repos/{owner}/{repo}/stargazers/history` → weekly buckets
+  `{ "week": <unix>, "total": <int>, "days": [7 ints] }`. `week` is a Unix
+  timestamp; `total` and `days` count stars created that week, not a running
+  total. `days` is Sunday through Saturday. Newest week first; pages move
+  backward toward the repository's creation week; `per_page` max 30, `page`
+  max 100; zero-star weeks included. Week and day boundaries are not
+  guaranteed to align with UTC.
+
+Public repositories support anonymous access to these aggregate routes. They
+share the ordinary REST core rate-limit bucket. Prefer them for shortlist
+growth curves and refreshed totals; keep `stargazers_count` on repository
+objects as a snapshot indicator with exact field provenance. Never treat star
+velocity as proof of quality. Do not reconstruct the current total by summing
+history buckets.
 
 ### Pagination and conditional requests
 
