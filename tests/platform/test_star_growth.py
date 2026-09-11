@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from fork_intelligence.domain.scoring import calculate_scores
 from fork_intelligence.domain.star_growth import (
     STAR_GROWTH_VERSION,
     summarize_star_growth,
@@ -57,3 +58,15 @@ def test_non_integer_totals_are_treated_as_zero() -> None:
 
     assert summary["created_last_4w"] == 0
     assert summary["weekly_created"] == [0, 0]
+
+
+def test_star_growth_metrics_do_not_change_scores() -> None:
+    base = {"stars": 10, "forks": 2, "watchers": 1}
+    with_growth = {
+        **base,
+        "star_growth": summarize_star_growth(9999, _weeks(500, 400, 300, 200)),
+    }
+
+    assert [score.value for score in calculate_scores(base)] == [
+        score.value for score in calculate_scores(with_growth)
+    ]
