@@ -64,25 +64,30 @@ meaningful commit.
 
 ### Star counts and privacy-safe star history (2026-09)
 
-Identity-bearing stargazer *listing* (`GET /repos/{owner}/{repo}/stargazers`)
-was restricted to admins and collaborators (changelog 2026-06-30) to reduce
-spam abuse. Do not design FI features that require enumerating stargazer
-identities for public analysis.
+Identity-bearing stargazer listing (`GET /repos/{owner}/{repo}/stargazers`) is
+restricted to admins and collaborators (changelog 2026-06-30). Do not design
+public analysis that enumerates stargazer identities.
 
-For growth and totals without identities, use:
+For growth and totals without identities, use the aggregate routes announced
+in changelog 2026-09-04. They are available on the pinned `2026-03-10` REST
+version; do not treat them as a reason to change the pin.
 
-- `GET /repos/{owner}/{repo}/stargazers/count` → `{ "count": <int> }` current
-  star total (excludes users who later unstarred).
+- `GET /repos/{owner}/{repo}/stargazers/count` → `{ "count": <int> }`: current
+  star total. Users who later unstarred are excluded.
 - `GET /repos/{owner}/{repo}/stargazers/history` → weekly buckets
-  `{ "week": <unix>, "total": <int>, "days": [Sun..Sat] }`, newest week first;
-  `per_page` max 30, `page` max 100; zero-star weeks included; week/day
-  boundaries are not guaranteed UTC-aligned (changelog 2026-09-04).
+  `{ "week": <unix>, "total": <int>, "days": [7 ints] }`. `week` is a Unix
+  timestamp; `total` and `days` count stars created that week, not a running
+  total. `days` is Sunday through Saturday. Newest week first; pages move
+  backward toward the repository's creation week; `per_page` max 30, `page`
+  max 100; zero-star weeks included. Week and day boundaries are not
+  guaranteed to align with UTC.
 
-Public repositories support **anonymous** access to these aggregate routes
-(verified Lab probe 2026-09-08). They share the ordinary REST **core**
-rate-limit bucket. Prefer them for shortlist **growth curves** and refreshed
-totals; keep `stargazers_count` on repository objects as a snapshot indicator
-with exact field provenance. Never treat star velocity as proof of quality.
+Public repositories support anonymous access to these aggregate routes. They
+share the ordinary REST core rate-limit bucket. Prefer them for shortlist
+growth curves and refreshed totals; keep `stargazers_count` on repository
+objects as a snapshot indicator with exact field provenance. Never treat star
+velocity as proof of quality. Do not reconstruct the current total by summing
+history buckets.
 
 ### Pagination and conditional requests
 
