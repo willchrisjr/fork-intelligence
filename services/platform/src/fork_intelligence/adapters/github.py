@@ -58,13 +58,14 @@ class GitHubClient:
             f"/repos/{_path_segment(owner)}/{_path_segment(name)}/stargazers/count",
         )
         data = response.json()
-        if not isinstance(data, dict) or "count" not in data:
+        count = _nonneg_int(data.get("count")) if isinstance(data, dict) else None
+        if count is None:
             raise GitHubError(
                 "invalid_github_response",
                 "Expected a stargazer count object",
                 status_code=502,
             )
-        return {"count": int(data["count"])}
+        return {"count": count}
 
     def get_stargazer_history(
         self, owner: str, name: str, *, per_page: int = 12
@@ -84,7 +85,9 @@ class GitHubClient:
             )
         weeks: list[dict[str, int]] = []
         for item in raw:
-            if not isinstance(item, dict):
+            week = _nonneg_int(item.get("week")) if isinstance(item, dict) else None
+            total = _nonneg_int(item.get("total")) if isinstance(item, dict) else None
+            if week is None or total is None:
                 raise GitHubError(
                     "invalid_github_response",
                     "Expected stargazer history week objects",
@@ -92,12 +95,7 @@ class GitHubClient:
                 )
             # Keep only the aggregate fields. Extra identity-bearing keys, if a
             # future schema added them, must not be persisted or returned.
-            weeks.append(
-                {
-                    "week": int(item.get("week") or 0),
-                    "total": int(item.get("total") or 0),
-                }
-            )
+            weeks.append({"week": week, "total": total})
         return weeks
 
     def get_repository(self, owner: str, name: str, *, etag: str | None = None) -> dict[str, Any]:
@@ -338,6 +336,12 @@ def _optional_int(value: str | None) -> int | None:
         return int(value) if value is not None else None
     except ValueError:
         return None
+
+
+def _nonneg_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 def _path_segment(value: str) -> str:

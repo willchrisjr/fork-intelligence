@@ -290,6 +290,24 @@ describe("API boundary mapping", () => {
             },
             classification: { label: "unknown", confidence: 0.2, reasons: [] },
             scores: [],
+            evidence: [
+              {
+                id: "ev-star",
+                type: "calculated_metric",
+                source: "github",
+                payload: {
+                  title: "Privacy-safe star growth",
+                  summary:
+                    "Current star count from GitHub's identity-free count endpoint.",
+                  count: 1284,
+                  weekly_created: [10, 12, 350],
+                },
+                provenance: {
+                  method: "github-rest-stargazers-aggregates",
+                  retrieved_at: "2026-09-11T00:00:00Z",
+                },
+              },
+            ],
           }),
           { status: 200 },
         ),
@@ -305,6 +323,13 @@ describe("API boundary mapping", () => {
       currentWeekPartial: true,
     });
     expect(detail.starGrowth?.count).not.toBe(9999);
+    expect(detail.evidence[0]).toMatchObject({
+      title: "Privacy-safe star growth",
+      summary:
+        "Current star count from GitHub's identity-free count endpoint.",
+      provenance: "github",
+    });
+    expect(detail.evidence[0]?.title).not.toBe("Git history and patch analysis");
   });
 });
 

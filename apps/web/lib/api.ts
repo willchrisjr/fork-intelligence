@@ -417,7 +417,7 @@ function mapEvidence(value: unknown, repository: string): EvidenceItem {
     ahead != null || behind != null
       ? `${ahead ?? "Unknown"} commits ahead and ${behind ?? "unknown"} behind; ${uniqueCommits ?? "unknown"} unique commits, ${patchIds.length} deterministic patch fingerprints, and ${changedFiles.length} changed files. Merge base ${string(payload.merge_base, "unavailable")}.`
       : string(
-          raw.summary ?? raw.description,
+          raw.summary ?? payload.summary ?? raw.description,
           "Structured evidence is available from the analysis service.",
         );
   return {
@@ -434,9 +434,12 @@ function mapEvidence(value: unknown, repository: string): EvidenceItem {
       : "metric") as EvidenceItem["type"],
     title: string(
       raw.title,
-      string(raw.type) === "calculated_metric"
-        ? "Git history and patch analysis"
-        : "Calculated evidence",
+      string(
+        payload.title,
+        string(raw.type) === "calculated_metric"
+          ? "Git history and patch analysis"
+          : "Calculated evidence",
+      ),
     ),
     summary,
     repository,

@@ -65,6 +65,18 @@ describe("StarGrowthPanel", () => {
     const { container } = render(<StarGrowthPanel />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("does not inflate zero-star weeks on the sparkline", () => {
+    const { container } = render(
+      <StarGrowthPanel
+        growth={{ ...growth, weeklyCreated: [0, 10, 0] }}
+      />,
+    );
+    const bars = container.querySelectorAll(".star-sparkline-bar");
+    expect(bars[0]).toHaveStyle({ height: "0%" });
+    expect(bars[1]).not.toHaveStyle({ height: "0%" });
+    expect(bars[2]).toHaveStyle({ height: "0%" });
+  });
 });
 
 describe("EvidenceInspector", () => {

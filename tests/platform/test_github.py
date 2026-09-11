@@ -298,3 +298,19 @@ def test_stargazer_history_rejects_a_non_list_payload() -> None:
         github.get_stargazer_history("root", "project")
 
     assert caught.value.code == "invalid_github_response"
+
+
+def test_stargazer_aggregates_reject_non_integer_values_as_invalid_responses() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/count"):
+            return httpx.Response(200, json={"count": True})
+        return httpx.Response(200, json=[{"week": 1, "total": "12"}])
+
+    with _client(httpx.MockTransport(handle)) as github:
+        with pytest.raises(GitHubError) as count_error:
+            github.get_stargazer_count("root", "project")
+        with pytest.raises(GitHubError) as history_error:
+            github.get_stargazer_history("root", "project")
+
+    assert count_error.value.code == "invalid_github_response"
+    assert history_error.value.code == "invalid_github_response"
