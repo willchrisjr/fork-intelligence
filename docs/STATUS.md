@@ -78,9 +78,9 @@
   the live alert API (403). The PostCSS alert closed with #43. Three parked
   major PRs must not be auto-merged: #63 ESLint 10 (eslint-plugin-react still
   calls removed `context.getFilename()`), #64 lucide-react 1 (`Github` brand
-  export removed), #65 TanStack Table 9 (breaking `useReactTable` /
-  `getCoreRowModel` API). `dependabot.yml` now ignores further ESLint and
-  Table major bumps until dedicated migrations.
+  export removed; replacement is #71), #65 TanStack Table 9 (breaking
+  `useReactTable` / `getCoreRowModel` API). `dependabot.yml` now ignores
+  further ESLint and Table major bumps until dedicated migrations.
 - Live AI enrichment is intentionally disabled and is not an MVP blocker.
 
 ## Validation performed
