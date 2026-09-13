@@ -59,6 +59,10 @@
 - A final containerized `octocat/Hello-World` run completed with three forks
   discovered, two forks structurally analyzed, ordered event replay, evidence,
   scoring, one deterministic cluster, comparison, and exports.
+- Privacy-safe star growth on shortlist evidence panels (#69, merged
+  2026-09-13): identity-free GitHub star count and 4w/12w weekly *created*
+  totals, sparkline, and spike disclosure. Not a shortlist column or sort key;
+  velocity is never treated as quality.
 
 ## In progress
 
@@ -67,18 +71,16 @@
 
 ## Blockers
 
-- Dependabot reports seven open alerts, six high: `brace-expansion` (1.x and
-  2.x lines) and `js-yaml`, both transitive through the ESLint toolchain, plus
-  the moderate pytest alert. Pull request #16 raises pytest to 9.1.1 and is
-  green. The PostCSS alert closed when #43 updated Next.js. Focused remediation
-  of the remaining six is the next code work.
-- The retired 8090 Software Factory integration still posts a `drift-bot`
-  commit status and inline review threads on pull requests. Because the
-  `Protect main` ruleset sets `required_review_thread_resolution`, each
-  unresolved thread it opens blocks the merge, even though `drift-bot` is not a
-  required status check. Its findings compare code against blueprints that are
-  no longer maintained. The GitHub App should be uninstalled; until then, its
-  threads must be resolved manually before merging.
+- Dependabot still reports transitive ESLint-toolchain alerts
+  (`brace-expansion` 1.1.16 / 2.1.2 and `js-yaml` in the lockfile). The
+  moderate pytest alert is resolved: #16 merged 2026-08-26, the constraint is
+  `pytest>=8.4,<10`, and `uv.lock` pins pytest 9.1.1. This agent cannot read
+  the live alert API (403). The PostCSS alert closed with #43. Three parked
+  major PRs must not be auto-merged: #63 ESLint 10 (eslint-plugin-react still
+  calls removed `context.getFilename()`), #64 lucide-react 1 (`Github` brand
+  export removed), #65 TanStack Table 9 (breaking `useReactTable` /
+  `getCoreRowModel` API). `dependabot.yml` now ignores further ESLint and
+  Table major bumps until dedicated migrations.
 - Live AI enrichment is intentionally disabled and is not an MVP blocker.
 
 ## Validation performed
@@ -120,6 +122,10 @@
   the approved unsandboxed browser run passed all 19 scenarios.
 - Docker Desktop required an interactive administrator helper installation;
   approved Colima/Docker Compose provided the equivalent validated runtime.
+- The retired 8090 Software Factory GitHub App posted a non-required
+  `drift-bot` commit status and review threads that blocked merges via
+  `required_review_thread_resolution`. Uninstalled 2026-09-13. Historical
+  failure remains on old SHAs only; new commits no longer receive that status.
 
 ## Next actions
 
@@ -160,3 +166,5 @@ Detailed sequencing and exit criteria are maintained in `docs/ROADMAP.md`.
   per-client throttling is a defense-in-depth layer.
 - Exports are sealed, deterministic database artifacts; partial terminal
   checkpoints can export with their limitations intact.
+- The 8090 Software Factory GitHub App is uninstalled (2026-09-13). `checks`
+  remains the only required status context on `main`.
