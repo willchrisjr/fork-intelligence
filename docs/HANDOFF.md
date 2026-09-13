@@ -14,9 +14,10 @@ here.
 > `CONTRIBUTING.md`, `docs/HANDOFF.md`, `docs/STATUS.md`, and `docs/ROADMAP.md`.
 > Inspect current Git and GitHub state before editing. Hosted CI and the billing
 > lock are resolved (issue #2 closed 2026-08-26) and `checks` is now required on
-> `main`; authenticated GraphQL acceleration and deterministic three-branch
-> planning have shipped. Resolve the open Dependabot alerts in focused pull
-> requests, then continue Priority 1 analysis coverage: bounded explicit blob
+> `main`. The 8090 drift-bot app was uninstalled 2026-09-13. Pytest 9.1.1 is
+> locked (#16). Park ESLint 10 (#63) and TanStack Table 9 (#65) until dedicated
+> migrations; do not auto-merge majors. Continue Priority 1 analysis coverage:
+> authenticated GraphQL acceleration, the three-branch planner, bounded blob
 > hydration, then real-network coverage benchmarks. Follow the protected-`main`
 > pull-request workflow and never execute analyzed code.
 
@@ -139,17 +140,16 @@ Acceptance criteria:
 Do not silently dismiss these alerts or add a broad override without proving why
 it is safe.
 
-**Inventory refreshed 2026-08-26.** The two alerts described below were the
-complete set when this document was written; there are now seven open alerts,
-six of them high. The two original entries are retained because their reasoning
-still applies, annotated with current state.
+**Inventory refreshed 2026-08-26; pytest resolved 2026-08-26.** The original
+ESLint-toolchain entries are retained because their reasoning still applies.
+Live Dependabot alert count is not readable from this agent (403).
 
 | Package | Vulnerable range | First patched | State |
 | --- | --- | --- | --- |
 | `brace-expansion` | `< 1.1.17`, `< 1.1.18` | 1.1.18 | Open (high). Lockfile has 1.1.16 |
 | `brace-expansion` | `>= 2.0.0, < 2.1.3`, `< 2.1.4` | 2.1.4 | Open (high). Lockfile has 2.1.2 |
 | `js-yaml` | `>= 4.0.0, < 4.3.0`, `< 4.3.1` | 4.3.1 | Open (high) |
-| `pytest` | `< 9.0.3` | 9.0.3 | Open (moderate). #16 bumps to 9.1.1 and is green |
+| `pytest` | `< 9.0.3` | 9.0.3 | Resolved. #16 merged 2026-08-26; lockfile pins 9.1.1 |
 
 `brace-expansion` and `js-yaml` arrive transitively through the ESLint
 toolchain — `eslint`, `eslint-plugin-import`, `eslint-plugin-jsx-a11y`, and
@@ -163,23 +163,13 @@ match the published version set and should not be taken at face value.
 
 ### Pytest alert
 
+**Resolved 2026-08-26** — #16 merged pytest 9.1.1. The constraint is now
+`pytest>=8.4,<10` and `services/platform/uv.lock` pins 9.1.1.
+
 - Alert: <https://github.com/willchrisjr/fork-intelligence/security/dependabot/2>
-- Current: `pytest 8.4.2`
+- Previous: `pytest 8.4.2` (`pytest>=8.4,<9`)
 - Vulnerable range: `<9.0.3`
 - First patched version: `9.0.3`
-- Constraint: `pytest>=8.4,<9` in `services/platform/pyproject.toml`
-- Consequence: remediation requires an intentional pytest major-version update,
-  not merely regenerating `uv.lock`.
-
-Recommended pull request:
-
-1. Create `agent/security-pytest-9`.
-2. Review pytest 9 migration notes and update the dev constraint to a bounded
-   compatible range beginning at `9.0.3`.
-3. Regenerate only the Python lockfile with uv.
-4. Run Ruff, strict mypy, all platform tests, PostgreSQL/Redis integration tests,
-   migrations, and the complete CI command.
-5. Confirm the Dependabot alert closes after merge.
 
 ### PostCSS alert
 

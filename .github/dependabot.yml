@@ -13,6 +13,15 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # eslint-config-next@16 still pulls eslint-plugin-react that calls
+      # removed context.getFilename(); peers cap at ESLint 9. See #63.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      # Table v9 requires an opt-in features / useTable migration of
+      # fork-table.tsx. Lockfile-only bumps fail typecheck. See #65.
+      - dependency-name: "@tanstack/react-table"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: uv
     directory: /services/platform
