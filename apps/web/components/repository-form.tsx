@@ -3,8 +3,8 @@
 import { useMutation } from "@tanstack/react-query";
 import {
   ArrowRight,
+  GitBranch,
   GitCompareArrows,
-  Github,
   Network,
   Route,
   Zap,
@@ -68,7 +68,7 @@ export function RepositoryForm() {
         }}
       >
         <div className="repo-input-wrap">
-          <Github aria-hidden="true" size={25} />
+          <GitBranch aria-hidden="true" size={25} />
           <label className="sr-only" htmlFor="repository">
             GitHub repository
           </label>
