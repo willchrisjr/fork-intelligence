@@ -51,6 +51,53 @@ class GitHubClient:
     def __exit__(self, *_: object) -> None:
         self.close()
 
+    def get_stargazer_count(self, owner: str, name: str) -> dict[str, int]:
+        """Current star total without enumerating stargazer identities."""
+        response = self._request(
+            "GET",
+            f"/repos/{_path_segment(owner)}/{_path_segment(name)}/stargazers/count",
+        )
+        data = response.json()
+        count = _nonneg_int(data.get("count")) if isinstance(data, dict) else None
+        if count is None:
+            raise GitHubError(
+                "invalid_github_response",
+                "Expected a stargazer count object",
+                status_code=502,
+            )
+        return {"count": count}
+
+    def get_stargazer_history(
+        self, owner: str, name: str, *, per_page: int = 12
+    ) -> list[dict[str, int]]:
+        """Weekly created-star buckets, newest first. Identity-free aggregates only."""
+        response = self._request(
+            "GET",
+            f"/repos/{_path_segment(owner)}/{_path_segment(name)}/stargazers/history",
+            params={"per_page": min(max(per_page, 1), 30), "page": 1},
+        )
+        raw = response.json()
+        if not isinstance(raw, list):
+            raise GitHubError(
+                "invalid_github_response",
+                "Expected a list of stargazer history weeks",
+                status_code=502,
+            )
+        weeks: list[dict[str, int]] = []
+        for item in raw:
+            week = _nonneg_int(item.get("week")) if isinstance(item, dict) else None
+            total = _nonneg_int(item.get("total")) if isinstance(item, dict) else None
+            if week is None or total is None:
+                raise GitHubError(
+                    "invalid_github_response",
+                    "Expected stargazer history week objects",
+                    status_code=502,
+                )
+            # Keep only the aggregate fields. Extra identity-bearing keys, if a
+            # future schema added them, must not be persisted or returned.
+            weeks.append({"week": week, "total": total})
+        return weeks
+
     def get_repository(self, owner: str, name: str, *, etag: str | None = None) -> dict[str, Any]:
         response = self._request(
             "GET", f"/repos/{_path_segment(owner)}/{_path_segment(name)}", etag=etag
@@ -289,6 +336,12 @@ def _optional_int(value: str | None) -> int | None:
         return int(value) if value is not None else None
     except ValueError:
         return None
+
+
+def _nonneg_int(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 def _path_segment(value: str) -> str:

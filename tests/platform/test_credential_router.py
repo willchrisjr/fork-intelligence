@@ -345,3 +345,30 @@ def test_quota_snapshot_drops_unexpected_provider_fields() -> None:
     }
     assert TOKEN not in str(snapshot)
     assert "smuggled" not in snapshot
+
+
+def test_stargazer_count_falls_back_anonymously() -> None:
+    def anonymous(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/repos/root/project/stargazers/count"
+        return httpx.Response(200, json={"count": 12})
+
+    router, calls = _router(authenticated=_rate_limited, anonymous=anonymous)
+    with router:
+        assert router.get_stargazer_count("root", "project") == {"count": 12}
+    assert calls == ["authenticated", "anonymous"]
+    assert router.credential_mode == "anonymous"
+
+
+def test_stargazer_history_falls_back_anonymously() -> None:
+    def anonymous(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/repos/root/project/stargazers/history"
+        assert request.url.params["per_page"] == "12"
+        return httpx.Response(200, json=[{"week": 1, "total": 4}])
+
+    router, calls = _router(authenticated=_rate_limited, anonymous=anonymous)
+    with router:
+        assert router.get_stargazer_history("root", "project", per_page=12) == [
+            {"week": 1, "total": 4}
+        ]
+    assert calls == ["authenticated", "anonymous"]
+    assert router.credential_mode == "anonymous"

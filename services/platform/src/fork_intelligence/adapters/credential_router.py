@@ -165,6 +165,16 @@ class GitHubCredentialRouter:
         self._observe_quota(result.quota)
         return result
 
+    def get_stargazer_count(self, owner: str, name: str) -> dict[str, int]:
+        return self._route(lambda client: client.get_stargazer_count(owner, name))
+
+    def get_stargazer_history(
+        self, owner: str, name: str, *, per_page: int = 12
+    ) -> list[dict[str, int]]:
+        return self._route(
+            lambda client: client.get_stargazer_history(owner, name, per_page=per_page)
+        )
+
     def get_branch(self, owner: str, name: str, branch: str) -> dict[str, Any]:
         return self._route(lambda client: client.get_branch(owner, name, branch))
 

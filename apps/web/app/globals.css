@@ -1182,6 +1182,33 @@ a {
   margin: 0 0 8px;
   font-size: 13px;
 }
+.star-growth-lead {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+.star-growth-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.star-sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 36px;
+  margin-top: 10px;
+}
+.star-sparkline-bar {
+  flex: 1 1 0;
+  min-width: 4px;
+  min-height: 0;
+  border-radius: 2px 2px 0 0;
+  background: var(--teal);
+}
+.star-sparkline-bar.is-newest {
+  background: var(--cobalt);
+  opacity: 0.72;
+}
 .score-table {
   width: 100%;
   border-collapse: collapse;

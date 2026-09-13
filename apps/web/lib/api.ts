@@ -19,6 +19,7 @@ import type {
   MaintenanceState,
   ProviderAccess,
   ScoreComponent,
+  StarGrowth,
 } from "./types";
 import type { components as ContractComponents } from "@fork-intelligence/contracts";
 
@@ -416,7 +417,7 @@ function mapEvidence(value: unknown, repository: string): EvidenceItem {
     ahead != null || behind != null
       ? `${ahead ?? "Unknown"} commits ahead and ${behind ?? "unknown"} behind; ${uniqueCommits ?? "unknown"} unique commits, ${patchIds.length} deterministic patch fingerprints, and ${changedFiles.length} changed files. Merge base ${string(payload.merge_base, "unavailable")}.`
       : string(
-          raw.summary ?? raw.description,
+          raw.summary ?? payload.summary ?? raw.description,
           "Structured evidence is available from the analysis service.",
         );
   return {
@@ -433,9 +434,12 @@ function mapEvidence(value: unknown, repository: string): EvidenceItem {
       : "metric") as EvidenceItem["type"],
     title: string(
       raw.title,
-      string(raw.type) === "calculated_metric"
-        ? "Git history and patch analysis"
-        : "Calculated evidence",
+      string(
+        payload.title,
+        string(raw.type) === "calculated_metric"
+          ? "Git history and patch analysis"
+          : "Calculated evidence",
+      ),
     ),
     summary,
     repository,
@@ -483,6 +487,21 @@ function mapForkDetail(value: unknown): ForkDetail {
         }
       : undefined,
     branchPlan: mapBranchPlanEntries(raw.branch_plan),
+    starGrowth: mapStarGrowth(metrics.star_growth),
+  };
+}
+
+function mapStarGrowth(value: unknown): StarGrowth | undefined {
+  const raw = record(value);
+  if (raw.count == null && raw.weekly_created == null) return undefined;
+  const weeklyCreated = array(raw.weekly_created).map((item) => number(item));
+  return {
+    count: number(raw.count),
+    createdLast4Weeks: number(raw.created_last_4w),
+    createdLast12Weeks: number(raw.created_last_12w),
+    weeklyCreated,
+    weeksObserved: number(raw.weeks_observed, weeklyCreated.length),
+    currentWeekPartial: raw.current_week_partial !== false,
   };
 }
 

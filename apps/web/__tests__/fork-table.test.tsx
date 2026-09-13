@@ -61,5 +61,8 @@ describe("ForkTable", () => {
     expect(
       screen.getByRole("columnheader", { name: /confidence/i }),
     ).toHaveAttribute("aria-sort", "descending");
+    expect(
+      screen.queryByRole("columnheader", { name: /growth/i }),
+    ).not.toBeInTheDocument();
   });
 });

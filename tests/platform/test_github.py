@@ -231,3 +231,86 @@ def test_not_modified_without_cache_is_explicit() -> None:
         github.get_repository("root", "project", etag='"cached"')
 
     assert caught.value.code == "not_modified_without_cache"
+
+
+def test_stargazer_count_uses_aggregate_route_and_pinned_api_version() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/repos/pallets/flask/stargazers/count"
+        assert request.headers["X-GitHub-Api-Version"] == "2026-03-10"
+        return httpx.Response(200, json={"count": 70412})
+
+    with _client(httpx.MockTransport(handle)) as github:
+        assert github.get_stargazer_count("pallets", "flask") == {"count": 70412}
+
+
+def test_stargazer_history_requests_twelve_weekly_buckets_and_strips_extra_fields() -> None:
+    captured: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(
+            200,
+            json=[
+                {"week": 1, "total": 350, "days": [1, 2, 3, 4, 5, 6, 329], "user": "must-not-keep"},
+                {"week": 2, "total": 10},
+            ],
+        )
+
+    with _client(httpx.MockTransport(handle)) as github:
+        weeks = github.get_stargazer_history("pallets", "flask", per_page=12)
+
+    assert captured[0].url.path == "/repos/pallets/flask/stargazers/history"
+    assert captured[0].url.params["per_page"] == "12"
+    assert captured[0].headers["X-GitHub-Api-Version"] == "2026-03-10"
+    assert weeks == [{"week": 1, "total": 350}, {"week": 2, "total": 10}]
+    assert "user" not in weeks[0]
+    assert "days" not in weeks[0]
+
+
+def test_stargazer_aggregates_never_list_identities() -> None:
+    paths: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        paths.append(request.url.path)
+        if request.url.path.endswith("/count"):
+            return httpx.Response(200, json={"count": 3})
+        return httpx.Response(200, json=[])
+
+    with _client(httpx.MockTransport(handle)) as github:
+        github.get_stargazer_count("root", "project")
+        github.get_stargazer_history("root", "project")
+
+    assert paths == [
+        "/repos/root/project/stargazers/count",
+        "/repos/root/project/stargazers/history",
+    ]
+    assert "/repos/root/project/stargazers" not in paths
+
+
+def test_stargazer_history_rejects_a_non_list_payload() -> None:
+    def handle(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"total": 12})
+
+    with (
+        _client(httpx.MockTransport(handle)) as github,
+        pytest.raises(GitHubError) as caught,
+    ):
+        github.get_stargazer_history("root", "project")
+
+    assert caught.value.code == "invalid_github_response"
+
+
+def test_stargazer_aggregates_reject_non_integer_values_as_invalid_responses() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/count"):
+            return httpx.Response(200, json={"count": True})
+        return httpx.Response(200, json=[{"week": 1, "total": "12"}])
+
+    with _client(httpx.MockTransport(handle)) as github:
+        with pytest.raises(GitHubError) as count_error:
+            github.get_stargazer_count("root", "project")
+        with pytest.raises(GitHubError) as history_error:
+            github.get_stargazer_history("root", "project")
+
+    assert count_error.value.code == "invalid_github_response"
+    assert history_error.value.code == "invalid_github_response"

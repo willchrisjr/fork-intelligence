@@ -253,12 +253,83 @@ describe("API boundary mapping", () => {
     );
     const detail = await api.getFork("analysis-1", "fork-1");
     expect(detail.originalWorkPercent).toBe(63);
+    expect(detail.starGrowth).toBeUndefined();
     expect(detail.evidence[0]).toMatchObject({
       title: "Git history and patch analysis",
       provenance: "git",
     });
     expect(detail.evidence[0]?.summary).toContain(
       "4 commits ahead and 1 behind",
+    );
+  });
+
+  it("maps identity-free star growth onto fork detail only", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "fork-1",
+            owner: "pallets",
+            name: "flask",
+            html_url: "https://github.com/pallets/flask",
+            default_branch: "main",
+            is_fork: false,
+            depth: "metadata",
+            metadata: {},
+            metrics: {
+              stars: 9999,
+              star_growth: {
+                count: 1284,
+                created_last_4w: 385,
+                created_last_12w: 460,
+                weekly_created: [10, 12, 350],
+                weeks_observed: 3,
+                current_week_partial: true,
+              },
+            },
+            classification: { label: "unknown", confidence: 0.2, reasons: [] },
+            scores: [],
+            evidence: [
+              {
+                id: "ev-star",
+                type: "calculated_metric",
+                source: "github",
+                payload: {
+                  title: "Privacy-safe star growth",
+                  summary:
+                    "Current star count from GitHub's identity-free count endpoint.",
+                  count: 1284,
+                  weekly_created: [10, 12, 350],
+                },
+                provenance: {
+                  method: "github-rest-stargazers-aggregates",
+                  retrieved_at: "2026-09-11T00:00:00Z",
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const detail = await api.getFork("analysis-1", "fork-1");
+    expect(detail.starGrowth).toEqual({
+      count: 1284,
+      createdLast4Weeks: 385,
+      createdLast12Weeks: 460,
+      weeklyCreated: [10, 12, 350],
+      weeksObserved: 3,
+      currentWeekPartial: true,
+    });
+    expect(detail.starGrowth?.count).not.toBe(9999);
+    expect(detail.evidence[0]).toMatchObject({
+      title: "Privacy-safe star growth",
+      summary: "Current star count from GitHub's identity-free count endpoint.",
+      provenance: "github",
+    });
+    expect(detail.evidence[0]?.title).not.toBe(
+      "Git history and patch analysis",
     );
   });
 });
