@@ -495,6 +495,7 @@ function mapStarGrowth(value: unknown): StarGrowth | undefined {
   const raw = record(value);
   if (raw.count == null && raw.weekly_created == null) return undefined;
   const weeklyCreated = array(raw.weekly_created).map((item) => number(item));
+  const vsUpstream = mapStarGrowthVsUpstream(raw.vs_upstream);
   return {
     count: number(raw.count),
     createdLast4Weeks: number(raw.created_last_4w),
@@ -502,6 +503,24 @@ function mapStarGrowth(value: unknown): StarGrowth | undefined {
     weeklyCreated,
     weeksObserved: number(raw.weeks_observed, weeklyCreated.length),
     currentWeekPartial: raw.current_week_partial !== false,
+    ...(vsUpstream ? { vsUpstream } : {}),
+  };
+}
+
+function mapStarGrowthVsUpstream(
+  value: unknown,
+): StarGrowth["vsUpstream"] {
+  const raw = record(value);
+  const fullName = string(raw.full_name);
+  if (!fullName) return undefined;
+  const ratio4Weeks = optionalNumber(raw.ratio_4w);
+  const ratio12Weeks = optionalNumber(raw.ratio_12w);
+  return {
+    fullName,
+    createdLast4Weeks: number(raw.created_last_4w),
+    createdLast12Weeks: number(raw.created_last_12w),
+    ...(ratio4Weeks == null ? {} : { ratio4Weeks }),
+    ...(ratio12Weeks == null ? {} : { ratio12Weeks }),
   };
 }
 

@@ -87,7 +87,10 @@ share the ordinary REST core rate-limit bucket. Prefer them for shortlist
 growth curves and refreshed totals; keep `stargazers_count` on repository
 objects as a snapshot indicator with exact field provenance. Never treat star
 velocity as proof of quality. Do not reconstruct the current total by summing
-history buckets.
+history buckets. On true forks, the same two aggregate routes may be reused
+for a parent/source 4w/12w comparison on the evidence panel; that note is not
+a ranking signal and is omitted when the fork's 12-week created-star series is
+all zeros.
 
 ### Pagination and conditional requests
 

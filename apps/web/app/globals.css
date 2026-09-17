@@ -1191,6 +1191,11 @@ a {
   font-size: 11px;
   line-height: 1.45;
 }
+.star-growth-vs-upstream {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .star-sparkline {
   display: flex;
   align-items: flex-end;

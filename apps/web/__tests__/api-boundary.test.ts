@@ -323,6 +323,7 @@ describe("API boundary mapping", () => {
       currentWeekPartial: true,
     });
     expect(detail.starGrowth?.count).not.toBe(9999);
+    expect(detail.starGrowth?.vsUpstream).toBeUndefined();
     expect(detail.evidence[0]).toMatchObject({
       title: "Privacy-safe star growth",
       summary: "Current star count from GitHub's identity-free count endpoint.",
@@ -331,6 +332,60 @@ describe("API boundary mapping", () => {
     expect(detail.evidence[0]?.title).not.toBe(
       "Git history and patch analysis",
     );
+  });
+
+  it("maps vs-upstream created-star windows and drops identity fields", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: "fork-1",
+            owner: "debauchee",
+            name: "barrier",
+            html_url: "https://github.com/debauchee/barrier",
+            default_branch: "main",
+            is_fork: true,
+            depth: "metadata",
+            metadata: {},
+            metrics: {
+              star_growth: {
+                count: 30879,
+                created_last_4w: 87,
+                created_last_12w: 296,
+                weekly_created: [22, 17, 44],
+                weeks_observed: 3,
+                current_week_partial: true,
+                vs_upstream: {
+                  full_name: "deskflow/deskflow",
+                  created_last_4w: 694,
+                  created_last_12w: 2075,
+                  ratio_4w: 0.13,
+                  ratio_12w: 0.14,
+                  login: "must-not-map",
+                  avatar_url: "https://example.test/avatar",
+                },
+              },
+            },
+            classification: { label: "unknown", confidence: 0.2, reasons: [] },
+            scores: [],
+            evidence: [],
+          }),
+          { status: 200 },
+        ),
+      ),
+    );
+    const detail = await api.getFork("analysis-1", "fork-1");
+    expect(detail.starGrowth?.vsUpstream).toEqual({
+      fullName: "deskflow/deskflow",
+      createdLast4Weeks: 694,
+      createdLast12Weeks: 2075,
+      ratio4Weeks: 0.13,
+      ratio12Weeks: 0.14,
+    });
+    expect(detail.starGrowth?.vsUpstream).not.toHaveProperty("login");
+    expect(JSON.stringify(detail.starGrowth)).not.toContain("must-not-map");
+    expect(JSON.stringify(detail.starGrowth)).not.toContain("avatar");
   });
 });
 

@@ -145,6 +145,14 @@ export interface EvidenceCounts {
 }
 
 /** Identity-free star totals for the evidence panel. Not a ranking signal. */
+export interface StarGrowthVsUpstream {
+  fullName: string;
+  createdLast4Weeks: number;
+  createdLast12Weeks: number;
+  ratio4Weeks?: number;
+  ratio12Weeks?: number;
+}
+
 export interface StarGrowth {
   count: number;
   createdLast4Weeks: number;
@@ -152,6 +160,7 @@ export interface StarGrowth {
   weeklyCreated: number[];
   weeksObserved: number;
   currentWeekPartial: boolean;
+  vsUpstream?: StarGrowthVsUpstream;
 }
 
 export interface ForkSummary {

@@ -67,8 +67,42 @@ export function StarGrowthPanel({
         bursts), so the 4- and 12-week windows are the better read. These totals
         are not summed into the current count.
       </p>
+      {growth.vsUpstream ? (
+        <p className="muted star-growth-vs-upstream">{vsUpstreamCopy(growth)}</p>
+      ) : null}
     </section>
   );
+}
+
+function vsUpstreamCopy(growth: StarGrowth): string {
+  const vs = growth.vsUpstream;
+  if (!vs) return "";
+  const four = windowCopy(
+    "4w",
+    growth.createdLast4Weeks,
+    vs.createdLast4Weeks,
+    vs.ratio4Weeks,
+  );
+  const twelve = windowCopy(
+    "12w",
+    growth.createdLast12Weeks,
+    vs.createdLast12Weeks,
+    vs.ratio12Weeks,
+  );
+  return (
+    `vs upstream ${vs.fullName}: ${four}, ${twelve}. ` +
+    "Created-stars; current week may be partial; not quality."
+  );
+}
+
+function windowCopy(
+  label: string,
+  forkTotal: number,
+  upstreamTotal: number,
+  ratio?: number,
+): string {
+  const core = `${label} ${formatNumber(forkTotal)} vs ${formatNumber(upstreamTotal)}`;
+  return ratio == null ? core : `${core} (${ratio.toFixed(2)}×)`;
 }
 
 function sparklineLabel(growth: StarGrowth): string {

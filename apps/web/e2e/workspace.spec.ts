@@ -139,6 +139,8 @@ test.describe("analysis workspace", () => {
     await expect(inspector).toContainText("Created last 4 weeks");
     await expect(inspector).toContainText("not proof of quality");
     await expect(inspector).toContainText("Newest week may be incomplete");
+    await expect(inspector).toContainText("vs upstream deskflow/deskflow");
+    await expect(inspector).toContainText("Created-stars");
     await inspector
       .getByRole("link", { name: "Open full fork details" })
       .click();
@@ -153,6 +155,9 @@ test.describe("analysis workspace", () => {
     await expect(
       page.getByRole("region", { name: "Star growth" }),
     ).toContainText("1,284");
+    await expect(
+      page.getByRole("region", { name: "Star growth" }),
+    ).toContainText("vs upstream deskflow/deskflow");
     await expect(page.getByText("f00dbabe1234567890")).toBeVisible();
   });
 
