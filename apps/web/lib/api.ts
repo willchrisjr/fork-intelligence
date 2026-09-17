@@ -507,9 +507,7 @@ function mapStarGrowth(value: unknown): StarGrowth | undefined {
   };
 }
 
-function mapStarGrowthVsUpstream(
-  value: unknown,
-): StarGrowth["vsUpstream"] {
+function mapStarGrowthVsUpstream(value: unknown): StarGrowth["vsUpstream"] {
   const raw = record(value);
   const fullName = string(raw.full_name);
   if (!fullName) return undefined;

@@ -77,7 +77,6 @@ def _seed(
     *,
     forks: list[tuple[int, str, int]],
     root_full_name: str = "root/project",
-    root_is_fork: bool = False,
     link_forks_to_root: bool = False,
     max_shortlist: int = 1,
     fork_relationships: dict[str, dict[str, Any]] | None = None,
@@ -93,7 +92,7 @@ def _seed(
         html_url=f"https://github.com/{root_full_name}",
         clone_url=f"https://github.com/{root_full_name}.git",
         default_branch="main",
-        is_fork=root_is_fork,
+        is_fork=False,
         archived=False,
         disabled=False,
         network_id=network.id,
@@ -328,26 +327,32 @@ def test_true_fork_with_parent_adds_vs_upstream_and_at_most_two_extra_calls(
 
 
 def test_non_fork_star_growth_does_not_fetch_or_store_vs_upstream(session: Session) -> None:
-    analysis = _seed(session, forks=[], root_is_fork=False)
+    analysis = _seed(
+        session,
+        forks=[(2, "lab/originalish", 80)],
+        link_forks_to_root=True,
+    )
+    original = session.scalar(select(Repository).where(Repository.name == "originalish"))
+    assert original is not None
+    original.is_fork = False
+    session.commit()
     router = StarGrowthRouter(
-        counts={"root/project": 1284},
-        histories={"root/project": BARRIER_WEEKS},
+        counts={"lab/originalish": 1284, "root/project": 28912},
+        histories={"lab/originalish": BARRIER_WEEKS, "root/project": DESKFLOW_WEEKS},
     )
 
     _pipeline(session, router)._shortlist(analysis)
     session.commit()
 
-    root = session.scalar(select(Repository).where(Repository.name == "project"))
-    assert root is not None
     snapshot = session.scalar(
-        select(RepositorySnapshot).where(RepositorySnapshot.repository_id == root.id)
+        select(RepositorySnapshot).where(RepositorySnapshot.repository_id == original.id)
     )
     assert snapshot is not None
     assert snapshot.shortlisted is True
     assert "vs_upstream" not in snapshot.metrics["star_growth"]
     assert router.paths == [
-        "/repos/root/project/stargazers/count",
-        "/repos/root/project/stargazers/history?per_page=12",
+        "/repos/lab/originalish/stargazers/count",
+        "/repos/lab/originalish/stargazers/history?per_page=12",
     ]
 
 
@@ -370,9 +375,7 @@ def test_all_zero_fork_series_skips_vs_upstream_and_parent_calls(session: Sessio
     session.commit()
 
     fork = session.scalar(
-        select(Repository).where(
-            Repository.owner == "miguelgrinberg", Repository.name == "flask"
-        )
+        select(Repository).where(Repository.owner == "miguelgrinberg", Repository.name == "flask")
     )
     assert fork is not None
     snapshot = session.scalar(

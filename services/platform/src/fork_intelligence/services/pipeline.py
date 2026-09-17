@@ -505,9 +505,7 @@ class AnalysisPipeline:
         upstream = self._fetch_star_growth(identifier.owner, identifier.name, cache)
         if upstream is None:
             return None
-        return compare_to_upstream(
-            fork_summary, upstream, upstream_full_name=identifier.full_name
-        )
+        return compare_to_upstream(fork_summary, upstream, upstream_full_name=identifier.full_name)
 
     def _star_growth_upstream_name(self, repository: Repository) -> str | None:
         """Parent, then source, from already-known fork metadata only."""

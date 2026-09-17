@@ -88,9 +88,7 @@ def test_star_growth_metrics_do_not_change_scores() -> None:
 
 
 def test_vs_upstream_uses_lab_barrier_deskflow_windows() -> None:
-    fork = summarize_star_growth(
-        30879, _weeks(12, 30, 21, 24, 7, 35, 19, 34, 31, 44, 17, 22)
-    )
+    fork = summarize_star_growth(30879, _weeks(12, 30, 21, 24, 7, 35, 19, 34, 31, 44, 17, 22))
     parent = summarize_star_growth(
         28912, _weeks(127, 195, 198, 174, 172, 172, 166, 171, 171, 230, 154, 145)
     )

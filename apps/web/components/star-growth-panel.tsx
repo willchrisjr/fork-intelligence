@@ -68,7 +68,9 @@ export function StarGrowthPanel({
         are not summed into the current count.
       </p>
       {growth.vsUpstream ? (
-        <p className="muted star-growth-vs-upstream">{vsUpstreamCopy(growth)}</p>
+        <p className="muted star-growth-vs-upstream">
+          {vsUpstreamCopy(growth)}
+        </p>
       ) : null}
     </section>
   );
