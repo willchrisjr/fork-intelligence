@@ -26,6 +26,7 @@ from fork_intelligence.domain.repository_input import parse_repository_identifie
 from fork_intelligence.domain.scoring import calculate_scores
 from fork_intelligence.domain.star_growth import (
     STAR_GROWTH_HISTORY_WEEKS,
+    compare_to_upstream,
     summarize_star_growth,
 )
 from fork_intelligence.errors import GitHubError, PlatformError
@@ -402,6 +403,7 @@ class AnalysisPipeline:
         selected = {snapshot.repository_id for snapshot in ranked[:shortlist_cap]}
         for snapshot in snapshots:
             snapshot.shortlisted = snapshot.repository_id in selected
+        growth_cache: dict[str, dict[str, Any] | None] = {}
         for snapshot in snapshots:
             if snapshot.repository_id not in selected:
                 continue
@@ -409,7 +411,7 @@ class AnalysisPipeline:
             repository = self.session.get(Repository, snapshot.repository_id)
             if repository is None or repository.disabled:
                 continue
-            self._record_star_growth(analysis, snapshot, repository)
+            self._record_star_growth(analysis, snapshot, repository, growth_cache)
         self._finish_stage(analysis, "shortlist", {"shortlisted": len(selected)})
 
     def _record_star_growth(
@@ -417,28 +419,29 @@ class AnalysisPipeline:
         analysis: AnalysisRun,
         snapshot: RepositorySnapshot,
         repository: Repository,
+        cache: dict[str, dict[str, Any] | None],
     ) -> None:
         """Attach identity-free star count and weekly created-star totals.
 
-        Two REST calls per shortlisted fork: ``/stargazers/count`` and
-        ``/stargazers/history``. Listing stargazers is never requested. A
-        per-repository failure is missing data; provider exhaustion still
-        stops the run.
+        Two REST calls per shortlisted repository: ``/stargazers/count`` and
+        ``/stargazers/history``. A true fork with a known parent/source may
+        add at most two more aggregate calls when that upstream is uncached.
+        Listing stargazers is never requested. A per-repository failure is
+        missing data; provider exhaustion still stops the run.
         """
-        try:
-            count_payload = self.github.get_stargazer_count(repository.owner, repository.name)
-            history = self.github.get_stargazer_history(
-                repository.owner, repository.name, per_page=STAR_GROWTH_HISTORY_WEEKS
-            )
-        except GitHubError as exc:
-            if exc.code in PROVIDER_EXHAUSTED_CODES:
-                raise
+        summary = self._fetch_star_growth(repository.owner, repository.name, cache)
+        if summary is None:
             self._append_missing(
                 snapshot,
                 "Privacy-safe star history was unavailable from GitHub",
             )
             return
-        summary = summarize_star_growth(count_payload["count"], history)
+        summary = dict(summary)
+        upstream_name = self._star_growth_upstream_name(repository)
+        if upstream_name and int(summary["created_last_12w"]) > 0:
+            comparison = self._star_growth_vs_upstream(upstream_name, summary, cache)
+            if comparison is not None:
+                summary["vs_upstream"] = comparison
         snapshot.metrics = {**snapshot.metrics, "star_growth": summary}
         self.session.add(
             EvidenceItem(
@@ -464,6 +467,69 @@ class AnalysisPipeline:
                 },
             )
         )
+
+    def _fetch_star_growth(
+        self,
+        owner: str,
+        name: str,
+        cache: dict[str, dict[str, Any] | None],
+    ) -> dict[str, Any] | None:
+        locator = f"{owner}/{name}".lower()
+        if locator in cache:
+            cached = cache[locator]
+            return dict(cached) if cached is not None else None
+        try:
+            count_payload = self.github.get_stargazer_count(owner, name)
+            history = self.github.get_stargazer_history(
+                owner, name, per_page=STAR_GROWTH_HISTORY_WEEKS
+            )
+        except GitHubError as exc:
+            if exc.code in PROVIDER_EXHAUSTED_CODES:
+                raise
+            cache[locator] = None
+            return None
+        summary = summarize_star_growth(count_payload["count"], history)
+        cache[locator] = summary
+        return dict(summary)
+
+    def _star_growth_vs_upstream(
+        self,
+        upstream_full_name: str,
+        fork_summary: dict[str, Any],
+        cache: dict[str, dict[str, Any] | None],
+    ) -> dict[str, Any] | None:
+        try:
+            identifier = parse_repository_identifier(upstream_full_name)
+        except PlatformError:
+            return None
+        upstream = self._fetch_star_growth(identifier.owner, identifier.name, cache)
+        if upstream is None:
+            return None
+        return compare_to_upstream(fork_summary, upstream, upstream_full_name=identifier.full_name)
+
+    def _star_growth_upstream_name(self, repository: Repository) -> str | None:
+        """Parent, then source, from already-known fork metadata only."""
+        if not repository.is_fork:
+            return None
+        self_name = f"{repository.owner}/{repository.name}".lower()
+        metadata = repository.metadata_json if isinstance(repository.metadata_json, dict) else {}
+        for candidate in (
+            self._repository_full_name(repository.parent_repository_id),
+            _relationship_full_name(metadata.get("parent")),
+            self._repository_full_name(repository.source_repository_id),
+            _relationship_full_name(metadata.get("source")),
+        ):
+            if candidate and candidate.lower() != self_name:
+                return candidate
+        return None
+
+    def _repository_full_name(self, repository_id: uuid.UUID | None) -> str | None:
+        if repository_id is None:
+            return None
+        related = self.session.get(Repository, repository_id)
+        if related is None:
+            return None
+        return f"{related.owner}/{related.name}"
 
     @staticmethod
     def _append_missing(snapshot: RepositorySnapshot, message: str) -> None:
@@ -1327,6 +1393,18 @@ def _parse_activity(value: object) -> datetime | None:
     try:
         return _as_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError:
+        return None
+
+
+def _relationship_full_name(value: Any) -> str | None:
+    if not isinstance(value, dict):
+        return None
+    raw = value.get("full_name")
+    if not isinstance(raw, str):
+        return None
+    try:
+        return parse_repository_identifier(raw).full_name
+    except PlatformError:
         return None
 
 

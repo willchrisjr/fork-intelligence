@@ -60,6 +60,13 @@ export const forkOne = {
       weekly_created: [8, 10, 9, 11, 7, 12, 10, 8, 9, 14, 12, 350],
       weeks_observed: 12,
       current_week_partial: true,
+      vs_upstream: {
+        full_name: "deskflow/deskflow",
+        created_last_4w: 694,
+        created_last_12w: 2075,
+        ratio_4w: 0.13,
+        ratio_12w: 0.14,
+      },
     },
     missing_data: [],
   },

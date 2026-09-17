@@ -59,6 +59,32 @@ describe("StarGrowthPanel", () => {
         name: /Weekly created stars, oldest to newest/,
       }),
     ).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent("vs upstream");
+  });
+
+  it("appends a vs-upstream created-star line for true forks", () => {
+    render(
+      <StarGrowthPanel
+        growth={{
+          ...growth,
+          createdLast4Weeks: 87,
+          createdLast12Weeks: 296,
+          vsUpstream: {
+            fullName: "deskflow/deskflow",
+            createdLast4Weeks: 694,
+            createdLast12Weeks: 2075,
+            ratio4Weeks: 0.13,
+            ratio12Weeks: 0.14,
+          },
+        }}
+      />,
+    );
+
+    const panel = screen.getByRole("region", { name: "Star growth" });
+    expect(panel).toHaveTextContent(
+      "vs upstream deskflow/deskflow: 4w 87 vs 694 (0.13×), 12w 296 vs 2,075 (0.14×). Created-stars; current week may be partial; not quality.",
+    );
+    expect(panel).toHaveTextContent("not proof of quality");
   });
 
   it("renders nothing when star growth was not retrieved", () => {

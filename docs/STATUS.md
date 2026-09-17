@@ -62,7 +62,8 @@
 - Privacy-safe star growth on shortlist evidence panels (#69, merged
   2026-09-13): identity-free GitHub star count and 4w/12w weekly *created*
   totals, sparkline, and spike disclosure. Not a shortlist column or sort key;
-  velocity is never treated as quality.
+  velocity is never treated as quality. True GitHub forks with a known parent or
+  source also get a one-line 4w/12w created-star comparison to that upstream.
 
 ## In progress
 
