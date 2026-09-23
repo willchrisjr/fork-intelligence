@@ -1,0 +1,65 @@
+{
+  "data": {
+    "rateLimit": {
+      "limit": 5000,
+      "cost": 1,
+      "remaining": 4989,
+      "nodeCount": 20,
+      "resetAt": "2026-09-23T12:00:00Z"
+    },
+    "repository": {
+      "databaseId": 10,
+      "forks": {
+        "pageInfo": { "hasNextPage": false, "endCursor": null },
+        "nodes": [
+          {
+            "databaseId": 13,
+            "name": "nested",
+            "nameWithOwner": "child/nested",
+            "url": "https://github.com/child/nested",
+            "isFork": true,
+            "isArchived": false,
+            "isDisabled": false,
+            "createdAt": "2022-05-01T00:00:00Z",
+            "updatedAt": "2024-05-01T00:00:00Z",
+            "pushedAt": "2024-04-01T00:00:00Z",
+            "stargazerCount": 0,
+            "forkCount": 0,
+            "diskUsage": 1,
+            "owner": { "login": "child" },
+            "defaultBranchRef": null,
+            "primaryLanguage": null,
+            "licenseInfo": null,
+            "watchers": { "totalCount": 0 },
+            "issues": { "totalCount": 0 },
+            "repositoryTopics": { "nodes": [] },
+            "parent": { "databaseId": 10, "nameWithOwner": "root/project" }
+          },
+          {
+            "databaseId": 11,
+            "name": "one",
+            "nameWithOwner": "fork/one",
+            "url": "https://github.com/fork/one",
+            "isFork": true,
+            "isArchived": false,
+            "isDisabled": false,
+            "createdAt": "2024-01-02T00:00:00Z",
+            "updatedAt": "2026-01-02T00:00:00Z",
+            "pushedAt": "2026-01-01T00:00:00Z",
+            "stargazerCount": 4,
+            "forkCount": 1,
+            "diskUsage": 12,
+            "owner": { "login": "fork" },
+            "defaultBranchRef": { "name": "main" },
+            "primaryLanguage": { "name": "Python" },
+            "licenseInfo": { "spdxId": "MIT" },
+            "watchers": { "totalCount": 2 },
+            "issues": { "totalCount": 1 },
+            "repositoryTopics": { "nodes": [] },
+            "parent": { "databaseId": 10, "nameWithOwner": "root/project" }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -117,6 +117,15 @@ timeouts, or exhausted cost. Do not make REST and GraphQL responses compete as
 independent truths: normalize both into one versioned repository snapshot and
 record the field-level source.
 
+Fork census uses that accelerator when a token is configured. Each page is one
+`forks` connection (`first` 1–100, `orderBy: CREATED_AT DESC`) advanced by
+`pageInfo.endCursor`. The worker checkpoints that cursor and the server-reported
+point cost. A page that cannot be trusted is not stored; listing continues on
+REST and repository ids already committed are skipped. `html_url` and
+`clone_url` are derived from a validated owner/name. Resolution of the requested
+repository, parent, and source still reads REST and only attributes a field to
+GraphQL when both transports agree.
+
 ## Authentication
 
 Anonymous REST is the default MVP mode for public repositories. The currently

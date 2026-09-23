@@ -1,0 +1,30 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "cost": 1, "remaining": 4900, "nodeCount": 4 },
+    "repository": {
+      "databaseId": 10,
+      "forks": {
+        "pageInfo": { "hasNextPage": false, "endCursor": null },
+        "nodes": [
+          {
+            "databaseId": 11,
+            "name": "one",
+            "nameWithOwner": "fork/one",
+            "url": "https://github.com/fork/one",
+            "isFork": true,
+            "isArchived": false,
+            "isDisabled": false,
+            "owner": { "login": "fork" },
+            "parent": { "databaseId": 10, "nameWithOwner": "root/project" }
+          }
+        ]
+      }
+    }
+  },
+  "errors": [
+    {
+      "type": "FORBIDDEN",
+      "message": "withheld by the provider and must not be persisted"
+    }
+  ]
+}

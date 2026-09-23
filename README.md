@@ -45,7 +45,8 @@ pnpm db:migrate
 ```
 
 `GITHUB_TOKEN` is optional. Anonymous public-repository analysis works with a
-lower API quota. Never commit `.env`.
+lower API quota. When a token is set, authenticated GraphQL accelerates fork
+census and falls back to REST. Never commit `.env`.
 
 The Compose credentials are development-only and both service ports bind to
 localhost. Replace all credentials and use private service networking before a

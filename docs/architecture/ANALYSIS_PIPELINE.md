@@ -11,7 +11,9 @@ and algorithm bundle versions so incompatible results are never silently reused.
 2. **Resolve** — fetch the requested repository, immediate parent, and source;
    establish stable IDs and canonical locators.
 3. **Census** — enumerate paginated accessible forks and collect normalized
-   metadata with field-level REST/GraphQL provenance.
+   metadata with field-level REST/GraphQL provenance. Authenticated runs read
+   direct fork pages from GraphQL when a point budget remains, and continue on
+   REST when that page cannot be trusted. Anonymous runs use REST only.
 4. **Shortlist** — deterministically prioritize potential original development
    using unique/default-head signals, recency, releases, adoption, and the user's
    mode. Publish metadata-only results immediately.

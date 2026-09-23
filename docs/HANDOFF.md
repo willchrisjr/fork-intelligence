@@ -212,6 +212,15 @@ separate milestones and pull requests.
 
 ### 1. Authenticated GraphQL metadata accelerator
 
+Status 2026-09-23: fork-census GraphQL pagination is implemented. A configured
+server-side token lists direct forks through a cursor-paged, cost-budgeted
+query. Anonymous mode stays on REST. Partial errors, budget exhaustion,
+timeout, schema drift, GraphQL rate limits, and a deleted repository fall back
+to REST; forks already committed stay. Snapshots record field provenance,
+including canonical URLs derived from validated owner/name rather than the
+provider URL. Resolution metadata is still only attributed to GraphQL when it
+agrees with a REST read. No capped real-network coverage run has been recorded.
+
 Primary files:
 
 - `services/platform/src/fork_intelligence/adapters/github.py`
