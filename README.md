@@ -94,8 +94,7 @@ intentionally sampled and the UI/API disclose that cap.
 ## Contributing
 
 Development uses short-lived branches, pull requests, squash merges, and
-automated dependency proposals. Required hosted CI is temporarily blocked by the
-tracked GitHub account billing lock; complete local validation and a documented
-exception are required until it is restored. Read
+automated dependency proposals. The hosted `checks` status is required on
+`main`; run `pnpm check:ci` locally before requesting review. Read
 [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before changing the
 repository. Do not push feature work directly to `main`.
