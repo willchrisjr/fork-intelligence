@@ -1,0 +1,47 @@
+{
+  "data": {
+    "rateLimit": { "limit": 5000, "cost": 1, "remaining": 4800, "nodeCount": 8 },
+    "repository": {
+      "databaseId": 10,
+      "forks": {
+        "pageInfo": { "hasNextPage": false, "endCursor": null },
+        "nodes": [
+          {
+            "databaseId": 14,
+            "name": "visible",
+            "nameWithOwner": "fork/visible",
+            "url": "https://github.com/fork/visible",
+            "isFork": true,
+            "isArchived": false,
+            "isDisabled": false,
+            "stargazerCount": 3,
+            "forkCount": 0,
+            "owner": { "login": "fork" },
+            "defaultBranchRef": { "name": "main" },
+            "parent": { "databaseId": 10, "nameWithOwner": "root/project" }
+          },
+          null,
+          { "databaseId": null, "nameWithOwner": "fork/deleted" },
+          {
+            "databaseId": 15,
+            "name": "elsewhere",
+            "nameWithOwner": "fork/elsewhere",
+            "url": "https://evil.example/fork/elsewhere",
+            "isFork": true,
+            "owner": { "login": "fork" },
+            "parent": { "databaseId": 10, "nameWithOwner": "root/project" }
+          },
+          {
+            "databaseId": 16,
+            "name": "mismatch",
+            "nameWithOwner": "fork/mismatch",
+            "url": "https://github.com/fork/mismatch",
+            "isFork": true,
+            "owner": { "login": "fork" },
+            "parent": { "databaseId": 99, "nameWithOwner": "other/root" }
+          }
+        ]
+      }
+    }
+  }
+}

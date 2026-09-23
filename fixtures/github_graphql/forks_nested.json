@@ -1,0 +1,42 @@
+{
+  "data": {
+    "rateLimit": {
+      "limit": 5000,
+      "cost": 1,
+      "remaining": 4988,
+      "nodeCount": 12,
+      "resetAt": "2026-09-23T12:00:00Z"
+    },
+    "repository": {
+      "databaseId": 11,
+      "forks": {
+        "pageInfo": { "hasNextPage": false, "endCursor": null },
+        "nodes": [
+          {
+            "databaseId": 21,
+            "name": "deeper",
+            "nameWithOwner": "grandchild/deeper",
+            "url": "https://github.com/grandchild/deeper",
+            "isFork": true,
+            "isArchived": false,
+            "isDisabled": false,
+            "createdAt": "2024-06-01T00:00:00Z",
+            "updatedAt": "2026-06-01T00:00:00Z",
+            "pushedAt": "2026-05-01T00:00:00Z",
+            "stargazerCount": 0,
+            "forkCount": 0,
+            "diskUsage": 1,
+            "owner": { "login": "grandchild" },
+            "defaultBranchRef": { "name": "main" },
+            "primaryLanguage": null,
+            "licenseInfo": null,
+            "watchers": { "totalCount": 0 },
+            "issues": { "totalCount": 0 },
+            "repositoryTopics": { "nodes": [] },
+            "parent": { "databaseId": 11, "nameWithOwner": "fork/one" }
+          }
+        ]
+      }
+    }
+  }
+}

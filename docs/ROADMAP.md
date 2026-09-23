@@ -8,7 +8,9 @@ current end-to-end workflow.
 
 1. Configure a scoped server-side GitHub credential and implement the optional
    GraphQL metadata accelerator with REST fallback, partial-error handling, cost
-   budgeting, and contract fixtures.
+   budgeting, and contract fixtures. Fork-census pagination now does this.
+   Repository resolution still confirms every field with REST, and item 4's
+   capped real-network measurement is still open.
 2. Implement the three-branch planner described in the architecture: default
    branch first, then recently active and meaningfully ahead branches within the
    configured cap.

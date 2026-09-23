@@ -7,7 +7,12 @@ from datetime import UTC, datetime
 from typing import Any, TypeVar
 
 from fork_intelligence.adapters.github import GitHubClient, GitHubPage
-from fork_intelligence.adapters.github_graphql import GitHubGraphQLClient, GraphQLResult
+from fork_intelligence.adapters.github_graphql import (
+    DEGRADATION_REASONS,
+    GitHubGraphQLClient,
+    GraphQLDegraded,
+    GraphQLResult,
+)
 from fork_intelligence.config import Settings, get_settings
 from fork_intelligence.errors import GitHubError
 
@@ -97,6 +102,8 @@ class GitHubCredentialRouter:
         self._graphql = graphql if has_credential else None
 
         self._state = _RouterState(mode="authenticated" if has_credential else "anonymous")
+        self._graphql_degradations: list[str] = []
+        self._graphql_partial_errors: list[str] = []
         if not has_credential:
             # AC-RA-AGA-002.1: an absent credential is a starting condition
             # rather than a transition, but the reduced coverage it implies
@@ -188,18 +195,59 @@ class GitHubCredentialRouter:
     def compare_commits(self, owner: str, name: str, base: str, head: str) -> dict[str, Any]:
         return self._route(lambda client: client.compare_commits(owner, name, base, head))
 
-    def iter_forks(
-        self, owner: str, name: str, *, max_pages: int | None = None
-    ) -> Iterator[GitHubPage]:
-        """Stream fork pages, resuming anonymously if the credential fails mid-listing.
+    @property
+    def graphql_points_spent(self) -> int:
+        if self._graphql is None:
+            return 0
+        return self._graphql.points_spent
 
-        Pages stay lazy because the caller commits and checkpoints per page.
-        A fallback therefore resumes at the page that failed rather than
-        restarting: pages already yielded are already durable, and the caller
-        de-duplicates by repository id, so a small ordering skew between the
-        two quota pools costs at most the coverage already disclosed.
+    @property
+    def graphql_degradations(self) -> list[str]:
+        """Why GraphQL stopped, if it did. Empty when the listing stayed on GraphQL."""
+        return list(self._graphql_degradations)
+
+    @property
+    def graphql_partial_errors(self) -> list[str]:
+        """Sanitized GraphQL error classifications observed while listing forks."""
+        return list(self._graphql_partial_errors)
+
+    def iter_forks(
+        self,
+        owner: str,
+        name: str,
+        *,
+        max_pages: int | None = None,
+        start_page: int = 1,
+        graphql_cursor: str | None = None,
+    ) -> Iterator[GitHubPage]:
+        """Stream fork pages, preferring GraphQL while the credential is in use.
+
+        GraphQL pages are yielded as they arrive. If GraphQL then stops, REST
+        restarts at page 1; the caller de-duplicates by repository id. REST
+        itself still resumes at the page that failed when the credential is
+        rejected mid-listing.
         """
-        next_page = 1
+        if self._graphql is not None and self._state.mode == "authenticated":
+            try:
+                yield from self._iter_graphql_forks(
+                    owner,
+                    name,
+                    max_pages=max_pages,
+                    start_page=start_page,
+                    after=graphql_cursor,
+                )
+                return
+            except GraphQLDegraded as exc:
+                self._record_graphql_degradation(exc)
+                start_page = 1
+            except GitHubError as exc:
+                if exc.code not in FALLBACK_ELIGIBLE_CODES:
+                    self._observe_quota(exc.details.get("quota"))
+                    raise
+                self._record_fallback(exc)
+                start_page = 1
+
+        next_page = start_page
         while True:
             client = self._active_client()
             authenticated = client is self._authenticated
@@ -218,6 +266,34 @@ class GitHubCredentialRouter:
                 self._observe_quota(page.quota)
                 next_page = page.page + 1
                 yield page
+
+    def _iter_graphql_forks(
+        self,
+        owner: str,
+        name: str,
+        *,
+        max_pages: int | None,
+        start_page: int,
+        after: str | None,
+    ) -> Iterator[GitHubPage]:
+        graphql = self._graphql
+        if graphql is None:
+            return
+        for page in graphql.iter_forks(
+            owner, name, max_pages=max_pages, start_page=start_page, after=after
+        ):
+            self._observe_quota(page.quota)
+            yield page
+
+    def _record_graphql_degradation(self, exc: GraphQLDegraded) -> None:
+        self._observe_quota(exc.quota)
+        if exc.reason in DEGRADATION_REASONS and exc.reason not in self._graphql_degradations:
+            self._graphql_degradations.append(exc.reason)
+        for item in exc.partial_errors:
+            if item in self._graphql_partial_errors or len(self._graphql_partial_errors) >= 8:
+                continue
+            if re.fullmatch(r"[A-Z0-9_]{1,48}", item):
+                self._graphql_partial_errors.append(item)
 
     def _active_client(self) -> GitHubClient:
         if self._state.mode == "authenticated" and self._authenticated is not None:
@@ -270,12 +346,16 @@ class GitHubCredentialRouter:
         # Rebuilding the dict field-by-field keeps anything else the provider
         # (or an error payload) supplied out of a value that gets persisted
         # and rendered in the browser.
-        self._state.quota = {
+        observed = {
             "limit": _coerce_int(quota.get("limit")),
             "remaining": _coerce_int(quota.get("remaining")),
             "reset": _coerce_int(quota.get("reset")),
             "resource": _coerce_resource(quota.get("resource")),
         }
+        node_count = _coerce_int(quota.get("node_count"))
+        if node_count is not None:
+            observed["node_count"] = node_count
+        self._state.quota = observed
 
     def close(self) -> None:
         for client in self._owned:

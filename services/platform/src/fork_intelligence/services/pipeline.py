@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from collections import deque
 from datetime import UTC, datetime
@@ -13,6 +14,7 @@ from fork_intelligence.adapters.credential_router import (
     GitHubCredentialRouter,
 )
 from fork_intelligence.adapters.git import BareNetworkStore
+from fork_intelligence.adapters.github import GitHubPage
 from fork_intelligence.config import Settings, get_settings
 from fork_intelligence.domain.branch_planning import (
     BRANCH_PLANNER_VERSION,
@@ -54,6 +56,15 @@ from fork_intelligence.services.persistence import (
 # resumable, rather than failing it. Both mean the router ran out of usable
 # access modes: its quota is spent, or every configured credential was refused.
 PROVIDER_EXHAUSTED_CODES = frozenset({"github_rate_limited", "github_unauthorized"})
+_GRAPHQL_FIELD_LABELS = frozenset(
+    {
+        "github_graphql",
+        "derived_canonical_https",
+        "not_supplied",
+        "default_assumed",
+    }
+)
+_GRAPHQL_CURSOR = re.compile(r"^[A-Za-z0-9+/=_-]{1,512}$")
 
 
 class AnalysisCancelled(Exception):
@@ -246,8 +257,11 @@ class AnalysisPipeline:
         capped = False
         page_cap_reached = False
         requests_used = 0
+        graphql_pages = 0
+        graphql_inaccessible = 0
         census_start_mode = self.github.credential_mode
         discovered_before_downgrade: int | None = None
+        resume_parent, resume_page, resume_cursor = self._census_resume_point(analysis)
         while queue and requests_used < request_budget and not capped:
             parent = queue.popleft()
             if parent.github_id in traversed:
@@ -255,25 +269,44 @@ class AnalysisPipeline:
             traversed.add(parent.github_id)
             remaining_requests = request_budget - requests_used
             page_cap = min(self.settings.max_github_pages, remaining_requests)
-            for page in self.github.iter_forks(parent.owner, parent.name, max_pages=page_cap):
-                requests_used += 1
+            resume_kwargs: dict[str, Any] = {}
+            if parent.github_id == resume_parent:
+                resume_kwargs["start_page"] = resume_page
+                if resume_cursor is not None:
+                    resume_kwargs["graphql_cursor"] = resume_cursor
+                if resume_page > page_cap:
+                    page_cap_reached = True
+            for page in self.github.iter_forks(
+                parent.owner, parent.name, max_pages=page_cap, **resume_kwargs
+            ):
+                if page.transport == "github_graphql":
+                    graphql_pages += 1
+                    graphql_inaccessible += page.inaccessible_count
+                else:
+                    requests_used += 1
                 if page.has_next and page.page >= page_cap:
                     page_cap_reached = True
                 for item in page.items:
-                    if item["github_id"] in seen:
+                    stored = dict(item)
+                    field_sources = stored.pop("field_provenance", None)
+                    github_id = stored.get("github_id")
+                    if not isinstance(github_id, int) or isinstance(github_id, bool):
+                        continue
+                    if github_id in seen:
                         continue
                     if len(seen) - 1 >= max_forks:
                         capped = True
                         break
-                    repository = self._upsert_repository(item, analysis.network_id)
+                    repository = self._upsert_repository(stored, analysis.network_id)
                     repository.parent_repository_id = parent.id
                     repository.source_repository_id = root.id
-                    # Fork pages come from REST pagination, never the GraphQL
-                    # accelerator, so this snapshot is attributed to REST alone.
                     self._upsert_snapshot(
-                        analysis.id, repository, item, self._provider_provenance()
+                        analysis.id,
+                        repository,
+                        stored,
+                        self._census_item_provenance(page, field_sources),
                     )
-                    seen.add(repository.github_id)
+                    seen.add(github_id)
                     queue.append(repository)
                 if (
                     discovered_before_downgrade is None
@@ -293,6 +326,10 @@ class AnalysisPipeline:
                         "page": page.page,
                         "requests_used": requests_used,
                         "repositories_discovered": len(seen) - 1,
+                        "transport": _page_transport(page),
+                        "has_next": page.has_next,
+                        "graphql_cursor": _page_cursor(page),
+                        "graphql_cost": _graphql_points(self.github),
                     }
                 emit_event(
                     self.session,
@@ -303,6 +340,8 @@ class AnalysisPipeline:
                         "page": page.page,
                         "repositories_discovered": len(seen) - 1,
                         "has_next": page.has_next,
+                        "transport": _page_transport(page),
+                        "inaccessible_count": page.inaccessible_count,
                     },
                 )
                 self.session.commit()
@@ -311,6 +350,10 @@ class AnalysisPipeline:
                     break
         traversal_incomplete = bool(queue) and requests_used >= request_budget
         credential_mode_changed = self.github.credential_mode != census_start_mode
+        graphql_reasons = _slug_list(getattr(self.github, "graphql_degradations", ()))
+        graphql_partial_errors = _slug_list(getattr(self.github, "graphql_partial_errors", ()))
+        graphql_cost = _graphql_points(self.github)
+        graphql_used = graphql_pages > 0 or bool(graphql_reasons) or graphql_cost > 0
         analysis.sampling = {
             "expected_network_size": int(root.metadata_json.get("forks") or 0) + 1,
             "accessible_forks": len(seen) - 1,
@@ -330,10 +373,19 @@ class AnalysisPipeline:
                     (traversal_incomplete, "github_request_budget_reached"),
                     (page_cap_reached, "github_page_cap_reached"),
                     (credential_mode_changed, "credential_mode_downgraded"),
+                    (bool(graphql_reasons), "graphql_rest_fallback"),
                 )
                 if condition
             ],
         }
+        if graphql_used:
+            analysis.sampling["graphql_pages"] = graphql_pages
+            analysis.sampling["graphql_cost"] = graphql_cost
+            analysis.sampling["graphql_inaccessible_forks"] = graphql_inaccessible
+            if graphql_reasons:
+                analysis.sampling["graphql_fallback_reasons"] = graphql_reasons
+            if graphql_partial_errors:
+                analysis.sampling["graphql_partial_errors"] = graphql_partial_errors
         if credential_mode_changed:
             # AC-RA-AGA-003.2: name the scope a mid-census downgrade affected,
             # since forks listed before it were drawn under a wider budget.
@@ -370,11 +422,36 @@ class AnalysisPipeline:
                     "message": "At least one fork page sequence exceeded its configured page cap",
                 },
             ]
-        self._finish_stage(
-            analysis,
-            "census",
-            {"repositories_discovered": len(seen) - 1, "requests_used": requests_used},
-        )
+        if graphql_reasons:
+            analysis.warnings = [
+                *analysis.warnings,
+                {
+                    "code": "graphql_rest_fallback",
+                    "message": (
+                        "GitHub GraphQL fork listing stopped; remaining discovery used REST"
+                    ),
+                    "reasons": graphql_reasons,
+                },
+            ]
+        if graphql_inaccessible:
+            analysis.warnings = [
+                *analysis.warnings,
+                {
+                    "code": "graphql_inaccessible_forks",
+                    "message": (
+                        "Some GraphQL fork records were deleted, inaccessible, or rejected"
+                    ),
+                    "count": graphql_inaccessible,
+                },
+            ]
+        finished = {
+            "repositories_discovered": len(seen) - 1,
+            "requests_used": requests_used,
+        }
+        if graphql_used:
+            finished["graphql_pages"] = graphql_pages
+            finished["graphql_cost"] = graphql_cost
+        self._finish_stage(analysis, "census", finished)
 
     def _shortlist(self, analysis: AnalysisRun) -> None:
         if self._stage_complete(analysis, "shortlist"):
@@ -848,6 +925,50 @@ class AnalysisPipeline:
                     )
                 )
         self._finish_stage(analysis, "clustering", {"clusters": len(clusters)})
+
+    def _census_resume_point(self, analysis: AnalysisRun) -> tuple[int | None, int, str | None]:
+        """Continue the interrupted parent when its last page was not the end.
+
+        Already committed forks stay in ``seen``. Only the parent named by the
+        checkpoint is resumed, and only while that page reported another page.
+        """
+        checkpoint = self.session.scalar(
+            select(StageCheckpoint).where(
+                StageCheckpoint.analysis_id == analysis.id,
+                StageCheckpoint.stage == "census",
+            )
+        )
+        cursor = checkpoint.cursor if checkpoint is not None else None
+        if not isinstance(cursor, dict) or cursor.get("has_next") is not True:
+            return None, 1, None
+        parent_id = _optional_int(cursor.get("parent_github_id"))
+        page = _optional_int(cursor.get("page"))
+        if parent_id is None or parent_id < 1 or page is None or page < 1:
+            return None, 1, None
+        graphql_cursor = None
+        raw_cursor = cursor.get("graphql_cursor")
+        if (
+            cursor.get("transport") == "github_graphql"
+            and isinstance(raw_cursor, str)
+            and _GRAPHQL_CURSOR.fullmatch(raw_cursor)
+        ):
+            graphql_cursor = raw_cursor
+        return parent_id, page + 1, graphql_cursor
+
+    def _census_item_provenance(self, page: GitHubPage, field_sources: Any) -> dict[str, Any]:
+        """Attribute a census snapshot to the transport that actually listed it."""
+        provenance = self._provider_provenance()
+        if page.transport != "github_graphql":
+            return provenance
+        fields: dict[str, str] = {}
+        if isinstance(field_sources, dict):
+            for key, label in field_sources.items():
+                if isinstance(key, str) and label in _GRAPHQL_FIELD_LABELS:
+                    fields[key] = label
+        provenance["source"] = "github_graphql"
+        provenance["fields"] = fields
+        provenance["graphql_attempted"] = True
+        return provenance
 
     def _provider_provenance(
         self, field_provenance: dict[str, Any] | None = None
@@ -1384,6 +1505,41 @@ class AnalysisPipeline:
 
 def _optional_int(value: object) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _page_transport(page: GitHubPage) -> str:
+    if page.transport == "github_graphql":
+        return "github_graphql"
+    return "github_rest"
+
+
+def _page_cursor(page: GitHubPage) -> str | None:
+    if page.transport != "github_graphql" or not isinstance(page.cursor, str):
+        return None
+    if _GRAPHQL_CURSOR.fullmatch(page.cursor) is None:
+        return None
+    return page.cursor
+
+
+def _graphql_points(github: object) -> int:
+    spent = getattr(github, "graphql_points_spent", None)
+    if isinstance(spent, int) and not isinstance(spent, bool) and spent >= 0:
+        return spent
+    return 0
+
+
+def _slug_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    slugs: list[str] = []
+    for item in value:
+        if not isinstance(item, str) or re.fullmatch(r"[A-Za-z0-9_]{1,48}", item) is None:
+            continue
+        if item not in slugs:
+            slugs.append(item)
+        if len(slugs) >= 8:
+            break
+    return slugs
 
 
 def _parse_activity(value: object) -> datetime | None:

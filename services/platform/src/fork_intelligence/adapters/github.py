@@ -19,6 +19,15 @@ class GitHubPage:
     has_next: bool
     etag: str | None
     quota: dict[str, Any]
+    #: Opaque continuation for a GraphQL connection. Absent on REST pages.
+    cursor: str | None = None
+    #: ``github_rest`` or ``github_graphql``. REST stays the default so existing
+    #: pages keep their provenance.
+    transport: str = "github_rest"
+    graphql_cost: int | None = None
+    #: Forks the provider listed but that could not be normalized (deleted,
+    #: inaccessible, or identity that failed validation).
+    inaccessible_count: int = 0
 
 
 class GitHubClient:

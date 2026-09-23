@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from fork_intelligence.adapters.credential_router import GitHubCredentialRouter
-from fork_intelligence.adapters.github import GitHubClient
+from fork_intelligence.adapters.github import GitHubClient, GitHubPage
 from fork_intelligence.adapters.github_graphql import GitHubGraphQLClient
 from fork_intelligence.config import Settings
 
@@ -66,9 +66,7 @@ def _router(
 
         return handle
 
-    rest_handler = rest_response or (
-        lambda _: httpx.Response(200, json=_rest_repository())
-    )
+    rest_handler = rest_response or (lambda _: httpx.Response(200, json=_rest_repository()))
 
     def rest_client(label: str) -> GitHubClient:
         return GitHubClient(
@@ -187,9 +185,7 @@ def test_partial_graphql_never_overwrites_valid_rest_data(fixture: str) -> None:
 
 
 def test_malformed_graphql_degrades_to_a_pure_rest_result() -> None:
-    router, calls = _router(
-        graphql_response=lambda _: httpx.Response(200, content=b"not json")
-    )
+    router, calls = _router(graphql_response=lambda _: httpx.Response(200, content=b"not json"))
 
     with router:
         repository = router.get_repository("octocat", "Hello-World")
@@ -207,9 +203,7 @@ def test_disagreement_prefers_rest_and_is_recorded() -> None:
     """A silent divergence would make accelerated coverage untrustworthy."""
     router, _ = _router(
         graphql_response=_ok_graphql(),
-        rest_response=lambda _: httpx.Response(
-            200, json=_rest_repository(stargazers_count=999)
-        ),
+        rest_response=lambda _: httpx.Response(200, json=_rest_repository(stargazers_count=999)),
     )
 
     with router:
@@ -219,3 +213,109 @@ def test_disagreement_prefers_rest_and_is_recorded() -> None:
     assert repository["stars"] == 999
     assert provenance["fields"]["stars"] == "github_rest"
     assert "stars" in provenance["divergent_fields"]
+
+
+def _rest_fork_list(request: httpx.Request) -> httpx.Response:
+    page = int(request.url.params.get("page", "1"))
+    return httpx.Response(
+        200,
+        json=[
+            {
+                "id": 30 + page,
+                "name": "rest",
+                "full_name": f"fork/rest-{page}",
+                "html_url": f"https://github.com/fork/rest-{page}",
+                "clone_url": f"https://github.com/fork/rest-{page}.git",
+                "owner": {"login": "fork"},
+                "default_branch": "main",
+                "fork": True,
+            }
+        ],
+    )
+
+
+def test_complete_graphql_fork_listing_does_not_call_rest() -> None:
+    router, calls = _router(graphql_response=_ok_graphql("forks_page_2"))
+
+    with router:
+        pages = list(router.iter_forks("root", "project"))
+
+    assert calls == ["graphql"]
+    assert pages[0].transport == "github_graphql"
+    assert [item["github_id"] for item in pages[0].items] == [13, 11]
+    assert router.credential_mode == "authenticated"
+    assert router.graphql_degradations == []
+    assert router.graphql_points_spent == 1
+
+
+def test_partial_graphql_fork_page_falls_back_to_rest_without_dropping_mode() -> None:
+    router, calls = _router(
+        graphql_response=_ok_graphql("forks_partial"),
+        rest_response=_rest_fork_list,
+    )
+
+    with router:
+        pages = list(router.iter_forks("root", "project", max_pages=1))
+
+    assert calls == ["graphql", "rest_authenticated"]
+    assert router.credential_mode == "authenticated"
+    assert router.graphql_degradations == ["partial_error"]
+    assert router.graphql_partial_errors == ["FORBIDDEN"]
+    assert pages[0].transport == "github_rest"
+    assert pages[0].items[0]["github_id"] == 31
+
+
+def test_graphql_pages_already_yielded_survive_a_later_fallback() -> None:
+    calls_seen: list[str | None] = []
+
+    def graphql(request: httpx.Request) -> httpx.Response:
+        after = json.loads(request.content)["variables"]["after"]
+        calls_seen.append(after)
+        if after is None:
+            return httpx.Response(200, json=_contract("forks_page_1"))
+        return httpx.Response(200, json=_contract("forks_partial"))
+
+    router, calls = _router(graphql_response=graphql, rest_response=_rest_fork_list)
+
+    with router:
+        pages = list(router.iter_forks("root", "project"))
+
+    assert [page.transport for page in pages] == ["github_graphql", "github_rest"]
+    assert pages[0].cursor == "Y3Vyc29yMQ"
+    assert pages[0].items[0]["github_id"] == 11
+    assert calls[0] == "graphql"
+    assert "rest_authenticated" in calls
+    assert router.graphql_degradations == ["partial_error"]
+
+
+def test_graphql_credential_rejection_falls_back_to_anonymous_rest() -> None:
+    def graphql(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, headers={"x-ratelimit-remaining": "3"})
+
+    router, calls = _router(graphql_response=graphql, rest_response=_rest_fork_list)
+
+    with router:
+        pages = list(router.iter_forks("root", "project", max_pages=1))
+
+    assert calls == ["graphql", "rest_anonymous"]
+    assert router.credential_mode == "anonymous"
+    assert [transition.reason for transition in router.drain_transitions()] == [
+        "operator_credential_rejected"
+    ]
+    assert isinstance(pages[0], GitHubPage)
+    assert pages[0].transport == "github_rest"
+
+
+def test_anonymous_fork_listing_never_calls_graphql() -> None:
+    router, calls = _router(
+        graphql_response=_ok_graphql("forks_page_2"),
+        rest_response=_rest_fork_list,
+        token=None,
+    )
+
+    with router:
+        pages = list(router.iter_forks("root", "project", max_pages=1))
+
+    assert calls == ["rest_anonymous"]
+    assert pages[0].transport == "github_rest"
+    assert router.graphql_points_spent == 0

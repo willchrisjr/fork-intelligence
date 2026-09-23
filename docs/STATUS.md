@@ -64,6 +64,14 @@
   totals, sparkline, and spike disclosure. Not a shortlist column or sort key;
   velocity is never treated as quality. True GitHub forks with a known parent or
   source also get a one-line 4w/12w created-star comparison to that upstream.
+- Authenticated GraphQL fork census: when a server-side token is configured,
+  direct fork pages are read from a cost-budgeted GraphQL connection with
+  cursor checkpoints and field-level provenance. Anonymous REST stays the
+  correctness baseline. Partial errors, point-budget exhaustion, timeout,
+  schema drift, rate limits, and deleted repositories fall back to REST
+  without dropping forks already committed. Repository resolution still
+  confirms metadata with REST. No capped real-network coverage run is recorded
+  yet.
 
 ## In progress
 
@@ -130,8 +138,10 @@
 
 ## Next actions
 
-1. Increase evidence coverage with authenticated GitHub acceleration, the
-   three-branch planner, and bounded deep blob hydration.
+1. Finish GraphQL acceleration and the rest of the coverage work. Fork-census
+   pagination is in place. Repository resolution still always reads REST.
+   A capped real-network coverage measurement is not recorded. The three-branch
+   planner and bounded deep blob hydration are still open.
 2. Automate scheduled retention, durable-job reconciliation, observability, and
    backup/restore drills.
 3. Improve saved/incremental investigations and upstream-absorption tracking.
