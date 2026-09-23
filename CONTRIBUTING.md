@@ -40,9 +40,8 @@ pnpm test:e2e
 ```
 
 If a check cannot run locally, explain why and identify the residual risk in the
-pull request. CI must pass before merge when GitHub-hosted Actions is available.
-While the tracked account billing lock prevents runners from starting, the full
-local suite and a documented exception are required.
+pull request. The hosted `checks` status is required and must pass before
+merge; a local-only exception is no longer accepted.
 
 ## Commit and pull request
 
@@ -60,8 +59,8 @@ followed by a corrective pull request.
 
 GitHub enforces the documented `main` policy through the active `Protect main`
 ruleset. No contributor or development agent may bypass it for routine work.
-Required CI must be added to the ruleset as soon as the tracked account billing
-lock is cleared and the hosted check passes.
+The ruleset requires the hosted `checks` status; it was added on 2026-08-26 once
+the account billing lock was cleared.
 
 ## Dependency updates
 
