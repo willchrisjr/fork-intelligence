@@ -880,7 +880,9 @@ def _fork_rows(
     if repository_id is not None:
         statement = statement.where(Repository.id == repository_id)
     rows = session.execute(statement).all()
-    result = []
+    result: list[
+        tuple[Repository, RepositorySnapshot, Classification | None, list[ScoreSnapshot]]
+    ] = []
     for repository, snapshot, classification in rows:
         scores = list(
             session.scalars(
