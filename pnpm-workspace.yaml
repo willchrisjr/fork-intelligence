@@ -6,3 +6,11 @@ allowBuilds:
   # audited, lockfile-pinned install scripts.
   sharp: true
   unrs-resolver: true
+overrides:
+  # Transitive security floors. The selector keeps each override on the
+  # vulnerable major; the replacement range is capped so pnpm does not float
+  # to a newer major (js-yaml 5, brace-expansion 5).
+  undici: ">=8.10.2 <9"
+  "js-yaml@4": ">=4.3.2 <5"
+  "brace-expansion@1": ">=1.1.18 <2"
+  "brace-expansion@2": ">=2.1.4 <3"
